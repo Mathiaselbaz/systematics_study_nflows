@@ -32,7 +32,7 @@ class SystematicDataset(Dataset):
         return self.nsample
 
     def __getitem__(self, idx):
-        return self.data[idx,:self.start_conditional], self.data[idx,self.start_conditional:], self.ind_n_log_g(self.data[idx,:]), self.n_log_p(idx)
+        return self.data[idx,:self.start_conditional], self.data[idx,self.start_conditional:], self.ind_n_log_g(self.data[idx,:]), self.n_log_p(gundam=False, idx=idx)
     
     def get_cov(self):
         return self.cov
@@ -63,43 +63,77 @@ class SystematicDataset(Dataset):
         else:
             if idx is None:
                 raise ValueError("Please provide an index to compute the log probability")
-            return -self.log_p[idx]
+            return self.log_p[idx]
         
     def transform_eigen_space_to_data_space(self, x):
         """Transforms a batch of data points from the eigenspace to the data space"""
         return torch.mm(x, self.cholesky.T) + self.mean
     
-    def plot_histo_data(self, n_sample, n_bins=100, eigen=False, true_reweight=False):
-        """Plots a histogram of the data in the eigenspace or systematic space"""
-        if eigen :
-            data = self.data
+    def plot_histo_data(self, n_sample=100, n_bins=100, eigen=False, gaussian_reweight=False):
+        """
+        Plots standard 1D and 2D histograms of the data (without Seaborn),
+        using a "plasma" colormap for the 2D plots.
+
+        Args:
+            n_sample (int): Number of samples to plot.
+            n_bins (int): Number of bins for histograms.
+            eigen (bool): If True, plot self.data (i.e., 'eigenspace');
+                        otherwise transform to 'data space' first.
+            gaussian_reweight (bool): If True, weight each sample by exp(-log_g).
+        """
+
+        # Decide which data to plot
+        if eigen:
+            data_plot = self.data[:n_sample, :]
         else:
-            data = self.transform_eigen_space_to_data_space(self.data)
-        # Create a figure and a set of subplots
-        if true_reweight :
-            true_weights = torch.exp(-self.n_log_p(data[:n_sample]))
-            fig, ax = plt.subplots(self.ndim, self.ndim, figsize=(20, 20))
+            data_plot = self.transform_eigen_space_to_data_space(self.data[:n_sample, :])
+
+        # Optionally compute sample weights
+        if gaussian_reweight:
+            # Assuming self.log_p is already negative log-likelihood (shape: [nsample])
+            weights = torch.exp(-self.n_log_g(data_plot))
+        else:
+            weights = None
+
+        # Create a figure and a grid of subplots
+        fig, ax = plt.subplots(self.ndim, self.ndim, figsize=(3*self.ndim, 3*self.ndim))
+
+        # Handle 1D case
+        if self.ndim == 1:
+            # Single 1D histogram
+            ax.hist(
+                data_plot[:, 0].numpy(),
+                bins=n_bins,
+                weights=None if weights is None else weights.numpy(),
+                color="blue",
+                alpha=0.7
+            )
+        else:
+            # Higher-dimensional case: plot grid of subplots
             for i in range(self.ndim):
                 for j in range(self.ndim):
                     if i == j:
-                        sns.histplot(data[:n_sample, i], weights=true_weights, bins=n_bins, kde=True, ax=ax[i, j])
+                        # Diagonal: 1D histogram
+                        ax[i, j].hist(
+                            data_plot[:, i].numpy(),
+                            bins=n_bins,
+                            weights=None if weights is None else weights.numpy(),
+                            color="blue",
+                            alpha=0.7
+                        )
                     else:
-                        #Plot sns 2D histogram
-                        sns.histplot2d(data[:n_sample, j], data[:n_sample, i], weights=true_weights, bins=n_bins, ax=ax[i, j])
-            # Save in img folder
-            plt.savefig('../img/histo_data_true_p.png')
-        else:
-            fig, ax = plt.subplots(self.ndim, self.ndim, figsize=(20, 20))
-            for i in range(self.ndim):
-                for j in range(self.ndim):
-                    if i == j:
-                        sns.histplot(data[:n_sample, i], bins=n_bins, kde=True, ax=ax[i, j])
-                    else:
-                        #Plot sns 2D histogram
-                        sns.histplot2d(data[:n_sample, j], data[:n_sample, i], bins=n_bins, ax=ax[i, j])
-            plt.show()
-            # Save in img folder
-            plt.savefig('../img/histo_data_gaussian.png')
+                        # Off-diagonal: 2D histogram with "plasma" colormap
+                        h = ax[i, j].hist2d(
+                            x=data_plot[:, j].numpy(),
+                            y=data_plot[:, i].numpy(),
+                            bins=n_bins,
+                            weights=None if weights is None else weights.numpy(),
+                            cmap="plasma"
+                        )
+                        # Optionally, you could add a colorbar for each subplot:
+                        # fig.colorbar(h[3], ax=ax[i, j])
+
+        plt.tight_layout()
+        plt.show()
+        plt.savefig('../img/histo_data.png')
         plt.close()
-
-
