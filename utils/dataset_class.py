@@ -12,19 +12,21 @@ import seaborn as sns
 
 
 
-class SystematicDataset(Dataset):
+class SystematicDataset(torch.nn.Module):
     def __init__(self, data_file, start_conditional):
         """Loads the dataset from a pickle file
 
         Args:
           data_file: Path to the pickle file containing the dataset
         """
-        data = np.load(data_file)
+        super(SystematicDataset, self).__init__()
+        data = np.load(data_file, allow_pickle=True)
         self.start_conditional = start_conditional
         self.data = torch.tensor(data['data'], dtype=torch.float32)
         self.mean = torch.tensor(data['mean'], dtype=torch.float32)
         self.cov = torch.tensor(data['cov'], dtype=torch.float32)
         self.log_p = torch.tensor(data['log_p'], dtype=torch.float32)
+        self.titles = data['par_names']
         self.cholesky = torch.linalg.cholesky(self.cov)
         self.nsample, self.ndim = self.data.shape
 
@@ -32,7 +34,7 @@ class SystematicDataset(Dataset):
         return self.nsample
 
     def __getitem__(self, idx):
-        return self.data[idx,:self.start_conditional], self.data[idx,self.start_conditional:], self.ind_n_log_g(self.data[idx,:]), self.n_log_p(gundam=False, idx=idx)
+        return self.data[idx,:self.start_conditional], self.data[idx,self.start_conditional:], self.ind_n_log_g(self.data[idx,:]), self.log_p[idx].unsqueeze(1)
     
     def get_cov(self):
         return self.cov
@@ -56,20 +58,23 @@ class SystematicDataset(Dataset):
         """
         return 0.5 * (self.ndim * np.log(2 * np.pi) + torch.sum(x**2, dim=1))
     
-    def n_log_p(self, gundam=False, idx=None):
+    def log_prob(self, gundam=False, idx=None):
         """Returns the log density of the data distribution from the file or by computing it with GUNDAM (not implemented)"""
         if gundam:
             raise NotImplementedError
         else:
             if idx is None:
                 raise ValueError("Please provide an index to compute the log probability")
-            return self.log_p[idx]
+            return self.data[idx,:self.start_conditional], self.data[idx,self.start_conditional:],-self.ind_n_log_g(self.data[idx,:]),-self.log_p[idx]
+        
         
     def transform_eigen_space_to_data_space(self, x):
         """Transforms a batch of data points from the eigenspace to the data space"""
         return torch.mm(x, self.cholesky.T) + self.mean
     
-    def plot_histo_data(self, n_sample=100, n_bins=100, eigen=False, gaussian_reweight=False):
+
+    
+    def plot_histo_data(self, n_sample=100, n_bins=100, eigen=False, true_reweight=False):
         """
         Plots standard 1D and 2D histograms of the data (without Seaborn),
         using a "plasma" colormap for the 2D plots.
@@ -89,16 +94,15 @@ class SystematicDataset(Dataset):
             data_plot = self.transform_eigen_space_to_data_space(self.data[:n_sample, :])
 
         # Optionally compute sample weights
-        if gaussian_reweight:
+        if true_reweight:
             # Assuming self.log_p is already negative log-likelihood (shape: [nsample])
-            weights = torch.exp(-self.n_log_g(data_plot))
+            weights = torch.exp(-self.n_log_p(gundam=False, idx=torch.arange(n_sample)))
         else:
             weights = None
 
-        # Create a figure and a grid of subplots
         fig, ax = plt.subplots(self.ndim, self.ndim, figsize=(3*self.ndim, 3*self.ndim))
 
-        # Handle 1D case
+
         if self.ndim == 1:
             # Single 1D histogram
             ax.hist(
@@ -109,11 +113,9 @@ class SystematicDataset(Dataset):
                 alpha=0.7
             )
         else:
-            # Higher-dimensional case: plot grid of subplots
             for i in range(self.ndim):
                 for j in range(self.ndim):
                     if i == j:
-                        # Diagonal: 1D histogram
                         ax[i, j].hist(
                             data_plot[:, i].numpy(),
                             bins=n_bins,
@@ -122,7 +124,6 @@ class SystematicDataset(Dataset):
                             alpha=0.7
                         )
                     else:
-                        # Off-diagonal: 2D histogram with "plasma" colormap
                         h = ax[i, j].hist2d(
                             x=data_plot[:, j].numpy(),
                             y=data_plot[:, i].numpy(),
@@ -130,8 +131,7 @@ class SystematicDataset(Dataset):
                             weights=None if weights is None else weights.numpy(),
                             cmap="plasma"
                         )
-                        # Optionally, you could add a colorbar for each subplot:
-                        # fig.colorbar(h[3], ax=ax[i, j])
+
 
         plt.tight_layout()
         plt.show()

@@ -14,6 +14,19 @@ class SystematicFlow(NormalizingFlow):
     which is also called context, to both the base distribution
     and the flow layers
     """
+    def __init__(self, base, flows, target):
+        """Initializes the normalizing flow model
+
+        Args:
+          base: Base distribution
+          flows: List of flow layers
+          target: Target distribution
+        """
+        super(SystematicFlow, self).__init__(base, flows,target)
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+
     def forward(self, z, context=None):
         """Transforms latent variable z to the flow variable x
 
@@ -129,6 +142,60 @@ class SystematicFlow(NormalizingFlow):
             log_q += log_det
         log_q += self.q0.log_prob(z, context=context)
         return -torch.mean(log_q)
+    
+    def forward_kld_importance(self, idx, verbose):
+        """Estimates forward KL divergence  with importance sampling  for a given index"""
+
+        device = self.device
+        zb, context, ind_log_g, log_p = self.p.log_prob(idx=idx)
+        ind_log_g= ind_log_g.to(device)
+        dim_context = context.shape[1]
+        dim_data = zb.shape[1]
+        zb = zb.to(device)
+        log_g = torch.sum(ind_log_g, dim=1, keepdim=True).to(device)
+        log_p = log_p.unsqueeze(1).to(device)
+        context = context.to(device)
+        log_g_context= torch.sum(ind_log_g[:,dim_data:], dim=1, keepdim=True).to(device)
+        log_q = self.log_prob(zb, context=context)
+        if verbose :
+            print('log_q : ', torch.mean(log_q).item())
+            print('log_p : ', torch.mean(log_p).item())
+            print('log_g : ', torch.mean(log_g).item())
+            print('log_g_context : ', torch.mean(log_g_context).item())
+            print('Forward kld :', torch.mean(torch.exp((log_p - log_g ))*(log_p - log_q - log_g_context)).item())
+            print('Weights :', torch.mean(torch.exp(log_p - log_g )).item())
+        return torch.mean(torch.exp((log_p - log_g ))*(log_p - log_q - log_g_context))
+    
+    def reverse_kld_importance(self, idx, verbose):
+        """Estimates reverse KL divergence  with importance sampling  for a given index"""
+
+        device = self.device
+        zb, context, ind_log_g, log_p = self.p.log_prob(idx=idx)
+        ind_log_g= ind_log_g.to(device)
+        dim_context = context.shape[1]
+        dim_data = zb.shape[1]
+        zb = zb.to(device)
+        log_g = torch.sum(ind_log_g, dim=1, keepdim=True).to(device)
+        log_p = log_p.unsqueeze(1).to(device)
+        context = context.to(device)
+        log_g_context= torch.sum(ind_log_g[:,dim_data:],dim=1, keepdim=True).to(device)
+        log_q = self.log_prob(zb, context=context)
+        
+        if verbose :
+            print('log_q : ', torch.mean(log_q).item())
+            print('log_p : ', torch.mean(log_p).item())
+            print('log_g : ', torch.mean(log_g).item())
+            print('log_g_context : ', torch.mean(log_g_context).item())
+            print('Weights :', torch.mean(torch.exp(log_q - log_g +log_g_context)).item())
+            print('Reverse kld :', torch.mean(torch.exp((log_q - log_g +log_g_context))*(log_q - log_p + log_g_context)).item())
+            
+        return torch.mean(torch.exp((log_q - log_g +log_g_context))*(log_q - log_p + log_g_context))
+    
+    def symmetric_kld_importance(self, idx, alpha=1, beta=1, verbose=False):
+        """Estimates symmetric KL divergence  with importance sampling  for a given index using the two functions above"""
+        
+        return alpha*self.reverse_kld_importance(idx, verbose) + beta*self.forward_kld_importance(idx, verbose)
+    
 
     def reverse_kld(self, num_samples=1, context=None, beta=1.0, score_fn=True):
         """Estimates reverse KL divergence
