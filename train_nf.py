@@ -30,12 +30,12 @@ parser.add_argument('--nflows', type=int, default=5, help='Number of flows')
 parser.add_argument('--nhidden', type=int, default=256, help='Number of hidden units in the neural networks')
 parser.add_argument('--nepochs', type=int, default=1000, help='Number of epochs')
 parser.add_argument('--lr', type=float, default=0.00001, help='Learning rate')
-parser.add_argument('--conditional', type=int, default=4, help='Number of conditional dimensions')
 parser.add_argument('--output_dir', type=str, default='output', help='Output directory')
 parser.add_argument('--seed', type=int, default=0, help='Random seed')
 parser.add_argument('--num_val', type=int, default=10000, help='Number of validation samples')
 parser.add_argument('--list_dim_phase_space', type=list, default=[8,9,10,11], help='List of the dimensions of the phase space')
 parser.add_argument('--tail_bound', type=float, default=5.0, help='Tail bounds for all dimension in sigma')
+parser.add_argument('--num_val_show', type=int, default=20000, help='Number of validation samples')
 args = parser.parse_args()
 
 # Set random seed
@@ -113,6 +113,7 @@ val_losses = []
 train_losses = []
 start = time.time()
 val_idx = np.random.choice(len(dataset), args.num_val, replace=False)
+
 train_idx = np.setdiff1d(np.arange(len(dataset)), val_idx)
 alpha = 0
 beta = 1
@@ -133,10 +134,11 @@ for epoch in tqdm.tqdm(range(args.nepochs)):
             val_loss = model.symmetric_kld_importance(val_idx, alpha=alpha, beta=beta, verbose = True, plot_hist_weight = True)
         print('Epoch %d, loss = %.2f, val_loss = %.2f' % (epoch, loss.item(), val_loss.item()))
         checkpoint_and_plot_losses(train_losses, val_losses, args.output_dir)
-        context_test= torch.randn(args.num_val, dataset.ndim-num_dim).to(device)
-        z, _= model.sample(args.num_val, context=context_test)
+        context_test= torch.randn(args.num_val_show, dataset.ndim-num_dim).to(device)
+        z, _= model.sample(args.num_val_show, context=context_test)
         z = z.detach().cpu().numpy()
-        plot_subplot_hist_model(z, dimension_names, epoch)
+        plot_subplot_hist_model(z, dimension_names, epoch+1)
+        del(z,context_test)
 
 end = time.time()
 print('Training time: %.2f s' % (end - start))

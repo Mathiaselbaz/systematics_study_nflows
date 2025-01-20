@@ -24,8 +24,7 @@ class SystematicFlow(NormalizingFlow):
         """
         super(SystematicFlow, self).__init__(base, flows,target)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.bins = np.linspace(0.01, 3, 50)
-
+        self.bins = np.logspace(-2, 2, 100)
 
 
     def forward(self, z, context=None):
@@ -126,23 +125,6 @@ class SystematicFlow(NormalizingFlow):
         log_q += self.q0.log_prob(z, context=context)
         return log_q
 
-    def forward_kld(self, x, context=None):
-        """Estimates forward KL divergence
-
-        Args:
-          x: Batch sampled from target distribution
-          context: Batch of conditions/context
-
-        Returns:
-          Estimate of forward KL divergence averaged over batch
-        """
-        log_q = torch.zeros(len(x), device=x.device)
-        z = x
-        for i in range(len(self.flows) - 1, -1, -1):
-            z, log_det = self.flows[i].inverse(z, context=context)
-            log_q += log_det
-        log_q += self.q0.log_prob(z, context=context)
-        return -torch.mean(log_q)
     
     def forward_kld_importance(self, idx, verbose = False, plot_hist_weight = False):
         """Estimates forward KL divergence  with importance sampling  for a given index"""
@@ -164,24 +146,24 @@ class SystematicFlow(NormalizingFlow):
             print(' Mean Weights :', torch.mean(torch.exp(log_p - log_g )).item())
         if plot_hist_weight :
           plt.figure()
-          weights = torch.exp(log_q + log_g_cond - log_p).detach().cpu().numpy()
+          weights = torch.exp(log_p - log_q - log_g_cond ).detach().cpu().numpy()
           ess = (np.sum(weights)**2) / np.sum(weights**2)
           ess_percentage = ess / len(weights) * 100
           plt.hist(weights, bins = self.bins)
           plt.text(0.05, 0.95, f'ESS: {ess_percentage:.2f}%', transform=plt.gca().transAxes, fontsize=12, verticalalignment='top', horizontalalignment='left')
-          plt.title('Weights NF/LLH')
+          plt.title('Weights LLH/NF')
           plt.xscale('log')
           plt.yscale('log')
           plt.savefig('img/Weight_nf_vs_llh')
           plt.close()
 
           plt.figure()
-          weights = torch.exp(log_g - log_p ).detach().cpu().numpy()
+          weights = torch.exp(log_p - log_g ).detach().cpu().numpy()
           ess = (np.sum(weights)**2) / np.sum(weights**2)
           ess_percentage = ess / len(weights) * 100
           plt.hist(weights, bins = self.bins)
           plt.text(0.05, 0.95, f'ESS: {ess_percentage:.2f}%', transform=plt.gca().transAxes, fontsize=12, verticalalignment='top', horizontalalignment='left')
-          plt.title('Weights Gaussian/LLH')
+          plt.title('Weights LLH/Gaussian')
           plt.xscale('log')
           plt.yscale('log')
           plt.savefig('img/Weights_gaussian_vs_llh')
@@ -224,87 +206,4 @@ class SystematicFlow(NormalizingFlow):
         """Estimates symmetric KL divergence  with importance sampling  for a given index using the two functions above"""
         
         return alpha*self.reverse_kld_importance(idx, verbose, plot_hist_weight=plot_hist_weight) + beta*self.forward_kld_importance(idx, verbose, plot_hist_weight = plot_hist_weight)
-    
-
-    def reverse_kld(self, num_samples=1, context=None, beta=1.0, score_fn=True):
-        """Estimates reverse KL divergence
-
-        Args:
-          num_samples: Number of samples to draw from base distribution
-          context: Batch of conditions/context
-          beta: Annealing parameter, see [arXiv 1505.05770](https://arxiv.org/abs/1505.05770)
-          score_fn: Flag whether to include score function in gradient, see [arXiv 1703.09194](https://arxiv.org/abs/1703.09194)
-
-        Returns:
-          Estimate of the reverse KL divergence averaged over latent samples
-        """
-        z, log_q_ = self.q0(num_samples, context=context)
-        log_q = torch.zeros_like(log_q_)
-        log_q += log_q_
-        for flow in self.flows:
-            z, log_det = flow(z, context=context)
-            log_q -= log_det
-        if not score_fn:
-            z_ = z
-            log_q = torch.zeros(len(z_), device=z_.device)
-            utils.set_requires_grad(self, False)
-            for i in range(len(self.flows) - 1, -1, -1):
-                z_, log_det = self.flows[i].inverse(z_, context=context)
-                log_q += log_det
-            log_q += self.q0.log_prob(z_, context=context)
-            utils.set_requires_grad(self, True)
-        log_p = self.p.log_prob(z, context=context)
-        return torch.mean(log_q) - beta * torch.mean(log_p)
-        
-    def symmetric_kld(self, i, num_samples=1, pedestal=0.005, beta=1.0, gamma=1.0, verbose=False, score_fn=True):
-        """Estimates symmetric KL divergence
-    
-        Args:
-          num_samples: Number of samples to draw from base distribution
-    
-        Returns:
-          Estimate of the symmetric KL divergence averaged over latent samples
-        """
-    
-        # Sample from the base distribution
-        z, _ = self.q0(num_samples)
-    
-        # Get log probability and context from p.log_prob()
-        zb, context, log_p = self.p.log_prob(i, pedestal)
-    
-        # Move tensors to the same device
-        zb = zb.to(z.device)
-        log_p = log_p.to(z.device)
-        context = context.to(z.device)
-    
-        # Compute log probabilities
-        log_q = self.log_prob(zb, context=context)
-    
-        # Compute a constant log_qb (log probability of a uniform base distribution)
-        log_qb = torch.full_like(log_q, np.log(1 / (2 ** 4)))
-    
-        # Disable gradient tracking for ratio computations
-        with torch.no_grad():
-            pq_ratio = torch.exp(log_p - log_qb)
-            qbq_ratio = torch.exp(log_q - log_qb)
-    
-        # Verbose output for debugging
-        if verbose:
-            print('log_p : ', torch.mean(log_p).item())
-            print('log_q : ', torch.mean(log_q).item())
-            print('pq_ratio : ', torch.mean(pq_ratio).item())
-            print('qbq_ratio : ', torch.mean(qbq_ratio).item())
-            print('Reverse kld :', torch.mean(qbq_ratio * (log_q - log_p)).item())
-            print('Forward kld :', torch.mean(pq_ratio * (log_p - log_q)).item())
-            print('Symmetric kld :', (torch.mean(qbq_ratio * (log_q - log_p)) + torch.mean(pq_ratio * (log_p - log_q))).item())
-    
-        # Compute the symmetric KLD
-        forward_kld = torch.mean(pq_ratio * (log_p - log_q))
-        reverse_kld = torch.mean(qbq_ratio * (log_q - log_p))
-        symmetric_kld = beta * reverse_kld + gamma * forward_kld
-    
-        # Explicitly delete intermediate tensors to free memory
-        del pq_ratio, qbq_ratio, log_q, log_p, log_qb, zb, context
-        torch.cuda.empty_cache()
-    
-        return symmetric_kld
+   
