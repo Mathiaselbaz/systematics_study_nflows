@@ -82,7 +82,7 @@ model = SystematicFlow(base, flow_layers, target)
 
 def checkpoint_and_plot_losses(losses, val_losses, output_dir):
     # Save the model
-    # torch.save(model.state_dict(), os.path.join(output_dir, 'model.pth'))
+    torch.save(model.state_dict(), os.path.join(output_dir, 'model.pth'))
     # Plot the losses
     plt.figure()
     plt.plot(losses, label='Training')
@@ -128,7 +128,7 @@ for epoch in tqdm.tqdm(range(args.nepochs)):
     with torch.no_grad():
         val_loss = model.symmetric_kld_importance(val_idx, alpha=alpha, beta=beta)
         val_losses.append(val_loss.item())
-    if epoch % 100 == 0:
+    if (epoch+1) % 100 == 0:
         with torch.no_grad():
             val_loss = model.symmetric_kld_importance(val_idx, alpha=alpha, beta=beta, verbose = True, plot_hist_weight = True)
         print('Epoch %d, loss = %.2f, val_loss = %.2f' % (epoch, loss.item(), val_loss.item()))
