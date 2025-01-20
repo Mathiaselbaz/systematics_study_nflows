@@ -24,6 +24,7 @@ class SystematicFlow(NormalizingFlow):
         """
         super(SystematicFlow, self).__init__(base, flows,target)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.bins = np.linspace(0.01, 3, 50)
 
 
 
@@ -163,9 +164,28 @@ class SystematicFlow(NormalizingFlow):
             print(' Mean Weights :', torch.mean(torch.exp(log_p - log_g )).item())
         if plot_hist_weight :
           plt.figure()
-          plt.hist((log_p - log_g ).detach().cpu().numpy())
-          plt.title('Log weights Forward KLD')
-          plt.savefig('img/Weight_forward')
+          weights = torch.exp(log_q + log_g_cond - log_p).detach().cpu().numpy()
+          ess = (np.sum(weights)**2) / np.sum(weights**2)
+          ess_percentage = ess / len(weights) * 100
+          plt.hist(weights, bins = self.bins)
+          plt.text(0.05, 0.95, f'ESS: {ess_percentage:.2f}%', transform=plt.gca().transAxes, fontsize=12, verticalalignment='top', horizontalalignment='left')
+          plt.title('Weights NF/LLH')
+          plt.xscale('log')
+          plt.yscale('log')
+          plt.savefig('img/Weight_nf_vs_llh')
+          plt.close()
+
+          plt.figure()
+          weights = torch.exp(log_g - log_p ).detach().cpu().numpy()
+          ess = (np.sum(weights)**2) / np.sum(weights**2)
+          ess_percentage = ess / len(weights) * 100
+          plt.hist(weights, bins = self.bins)
+          plt.text(0.05, 0.95, f'ESS: {ess_percentage:.2f}%', transform=plt.gca().transAxes, fontsize=12, verticalalignment='top', horizontalalignment='left')
+          plt.title('Weights Gaussian/LLH')
+          plt.xscale('log')
+          plt.yscale('log')
+          plt.savefig('img/Weights_gaussian_vs_llh')
+          plt.close()
         return torch.mean(torch.exp((log_p - log_g ))*(log_p - log_q - log_g_cond))
     
     def reverse_kld_importance(self, idx, verbose = False, plot_hist_weight = False):
@@ -188,10 +208,16 @@ class SystematicFlow(NormalizingFlow):
             print(' Mean Weights :', torch.mean(torch.exp(log_q - log_g +log_g_cond)).item())
             print('Reverse kld :', torch.mean(torch.exp((log_q - log_g +log_g_cond))*(log_q - log_p + log_g_cond)).item())
         if plot_hist_weight :
+          weights = (torch.exp(log_q - log_g +log_g_cond)).detach().cpu().numpy()
           plt.figure()
-          plt.hist(((log_q - log_g +log_g_cond)).detach().cpu().numpy())
-          plt.title('Log weights Reverse KLD')
-          plt.savefig('img/Weight_reverse')   
+          plt.hist(weights, bins = self.bins)
+          ess = (np.sum(weights)**2) / np.sum(weights**2)
+          ess_percentage = ess / len(weights) * 100
+          plt.text(0.05, 0.95, f'ESS: {ess_percentage:.2f}%', transform=plt.gca().transAxes, fontsize=12, verticalalignment='top', horizontalalignment='left')
+          plt.title('Weights NF/gaussian')
+          plt.xscale('log')
+          plt.yscale('log')
+          plt.savefig('img/Weight_nf_vs_gaussian')   
         return torch.mean(torch.exp((log_q - log_g +log_g_cond))*(log_q - log_p + log_g_cond))
     
     def symmetric_kld_importance(self, idx, alpha=1, beta=1, verbose=False, plot_hist_weight = False):

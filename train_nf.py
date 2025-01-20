@@ -24,16 +24,16 @@ import tqdm
 
 # Parse arguments
 parser = argparse.ArgumentParser()
-parser.add_argument('--data_file', type=str, default='Dataset/pickle_files/test_100k.pkl', help='Path to the dataset file')
-parser.add_argument('--batch_size', type=int, default=5000, help='Batch size')
-parser.add_argument('--nflows', type=int, default=10, help='Number of flows')
+parser.add_argument('--data_file', type=str, default='Dataset/pickle_files/configMarginalise_Fit_configOa2021_Asimov_12Pars_1M.pkl', help='Path to the dataset file')
+parser.add_argument('--batch_size', type=int, default=10000, help='Batch size')
+parser.add_argument('--nflows', type=int, default=5, help='Number of flows')
 parser.add_argument('--nhidden', type=int, default=256, help='Number of hidden units in the neural networks')
 parser.add_argument('--nepochs', type=int, default=1000, help='Number of epochs')
 parser.add_argument('--lr', type=float, default=0.00001, help='Learning rate')
 parser.add_argument('--conditional', type=int, default=4, help='Number of conditional dimensions')
 parser.add_argument('--output_dir', type=str, default='output', help='Output directory')
 parser.add_argument('--seed', type=int, default=0, help='Random seed')
-parser.add_argument('--num_val', type=int, default=5000, help='Number of validation samples')
+parser.add_argument('--num_val', type=int, default=10000, help='Number of validation samples')
 parser.add_argument('--list_dim_phase_space', type=list, default=[8,9,10,11], help='List of the dimensions of the phase space')
 parser.add_argument('--tail_bound', type=float, default=5.0, help='Tail bounds for all dimension in sigma')
 args = parser.parse_args()
@@ -54,9 +54,9 @@ if not os.path.exists(args.output_dir):
 
 def plot_subplot_hist_model(z, dimension_names, epoch):
     ndim=z.shape[1]
-    fig, axes = plt.subplots(nrows=4, ncols=4, figsize=(10, 9))
-    for i in range(4):
-        for j in range(4):
+    fig, axes = plt.subplots(nrows=ndim, ncols=ndim, figsize=(10, 9))
+    for i in range(ndim):
+        for j in range(ndim):
             if i == j:
                 axes[i, j].hist(z[:, i], bins=100, alpha=0.7)
                 axes[i, j].set_xlabel(dimension_names[i])
