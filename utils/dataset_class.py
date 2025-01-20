@@ -150,3 +150,36 @@ class SystematicDataset(torch.nn.Module):
         plt.show()
         plt.savefig('../img/histo_data.png')
         plt.close()
+    def plot_weights_histogram(self, save_path='img/hist_weights_all'):
+        """
+        Plots the histogram of weights for the entire dataset.
+        
+        The weights are defined as:
+            weight[i] = exp( n_log_g(data[i]) - log_p[i] ).
+        
+        Args:
+            n_bins (int): Number of bins for the histogram.
+            save_path (str or None): If not None, saves the figure to this path.
+        """
+        # n_log_g over the entire dataset (returns shape [nsample])
+        nlogg_vals = self.n_log_g(self.data)
+        
+        # log_p also shape [nsample], so do the difference
+        diff_vals = nlogg_vals - self.log_p  # shape [nsample]
+        
+        # Exponentiate to get the weights
+        weights = torch.exp(diff_vals)
+        bins = np.logspace(-2, 6, 100)
+        
+        # Plot the histogram
+        plt.figure(figsize=(8,6))
+        plt.hist(weights.numpy(), bins=bins, color='blue', alpha=0.7)
+        plt.xlabel("Weight ")
+        plt.ylabel("Frequency")
+        plt.xscale('log')
+        plt.yscale('log')
+        plt.title("Histogram of Weights for Entire Dataset")
+        
+        if save_path is not None:
+            plt.savefig(save_path)
+        plt.close()

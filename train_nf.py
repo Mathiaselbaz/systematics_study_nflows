@@ -21,6 +21,8 @@ import pickle
 import torch.cuda as cuda
 import tqdm
 
+def parse_list(arg):
+    return [int(x) for x in arg.strip('[]').split(',')]
 
 # Parse arguments
 parser = argparse.ArgumentParser()
@@ -33,14 +35,14 @@ parser.add_argument('--lr', type=float, default=0.00001, help='Learning rate')
 parser.add_argument('--output_dir', type=str, default='output', help='Output directory')
 parser.add_argument('--seed', type=int, default=0, help='Random seed')
 parser.add_argument('--num_val', type=int, default=10000, help='Number of validation samples')
-parser.add_argument('--list_dim_phase_space', type=list, default=[8,9,10,11], help='List of the dimensions of the phase space')
+parser.add_argument('--list_dim_phase_space', type=parse_list, default=[4,5,6,7,8,9,10,11], help='List of the dimensions of the phase space')
 parser.add_argument('--tail_bound', type=float, default=5.0, help='Tail bounds for all dimension in sigma')
-parser.add_argument('--num_val_show', type=int, default=20000, help='Number of validation samples')
+parser.add_argument('--num_val_show', type=int, default=10000, help='Number of validation samples')
 args = parser.parse_args()
 
 # Set random seed
-torch.manual_seed(args.seed)
-np.random.seed(args.seed)
+# torch.manual_seed(args.seed)
+# np.random.seed(args.seed)
 
 
 # empty cache and useless memory
@@ -72,6 +74,7 @@ def plot_subplot_hist_model(z, dimension_names, epoch):
 num_dim = len(args.list_dim_phase_space)
 # Load the dataset
 dataset = SystematicDataset(args.data_file, args.list_dim_phase_space)
+dataset.plot_weights_histogram()
 dimension_names = [dataset.titles[i].split('/')[-1] for i in args.list_dim_phase_space]
 
 # Initialize the normalizing flow model
@@ -115,13 +118,13 @@ start = time.time()
 val_idx = np.random.choice(len(dataset), args.num_val, replace=False)
 
 train_idx = np.setdiff1d(np.arange(len(dataset)), val_idx)
-alpha = 0
+alpha = 1
 beta = 1
 
 for epoch in tqdm.tqdm(range(args.nepochs)):
     idx = np.random.choice(train_idx, args.batch_size, replace=False)
     optimizer.zero_grad()
-    loss = model.forward_kld_importance(idx, verbose=False)
+    loss = model.symmetric_kld_importance(idx, alpha=alpha, beta=beta, verbose=False)
     loss.backward()
     optimizer.step()
     scheduler.step()
@@ -131,13 +134,14 @@ for epoch in tqdm.tqdm(range(args.nepochs)):
         val_losses.append(val_loss.item())
     if (epoch+1) % 100 == 0:
         with torch.no_grad():
-            val_loss = model.symmetric_kld_importance(val_idx, alpha=alpha, beta=beta, verbose = True, plot_hist_weight = True)
+            val_loss = model.symmetric_kld_importance(val_idx, alpha=alpha, beta=beta, verbose = False, plot_hist_weight = True)
         print('Epoch %d, loss = %.2f, val_loss = %.2f' % (epoch, loss.item(), val_loss.item()))
         checkpoint_and_plot_losses(train_losses, val_losses, args.output_dir)
         context_test= torch.randn(args.num_val_show, dataset.ndim-num_dim).to(device)
         z, _= model.sample(args.num_val_show, context=context_test)
         z = z.detach().cpu().numpy()
         plot_subplot_hist_model(z, dimension_names, epoch+1)
+
         del(z,context_test)
 
 end = time.time()

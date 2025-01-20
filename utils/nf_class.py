@@ -168,7 +168,9 @@ class SystematicFlow(NormalizingFlow):
           plt.yscale('log')
           plt.savefig('img/Weights_gaussian_vs_llh')
           plt.close()
-        return torch.mean(torch.exp((log_p - log_g ))*(log_p - log_q - log_g_cond))
+        kld = torch.mean(torch.exp((log_p - log_g ))*(log_p - log_q - log_g_cond))
+        del(log_p,log_g, log_g_cond, log_q)
+        return kld
     
     def reverse_kld_importance(self, idx, verbose = False, plot_hist_weight = False):
         """Estimates reverse KL divergence  with importance sampling  for a given index"""
@@ -200,7 +202,9 @@ class SystematicFlow(NormalizingFlow):
           plt.xscale('log')
           plt.yscale('log')
           plt.savefig('img/Weight_nf_vs_gaussian')   
-        return torch.mean(torch.exp((log_q - log_g +log_g_cond))*(log_q - log_p + log_g_cond))
+        kld = torch.mean(torch.exp((log_q - log_g +log_g_cond))*(log_q - log_p + log_g_cond))
+        del(log_p,log_g, log_g_cond, log_q)
+        return kld
     
     def symmetric_kld_importance(self, idx, alpha=1, beta=1, verbose=False, plot_hist_weight = False):
         """Estimates symmetric KL divergence  with importance sampling  for a given index using the two functions above"""
