@@ -13,15 +13,15 @@ import seaborn as sns
 
 
 class SystematicDataset(torch.nn.Module):
-    def __init__(self, data_file, start_conditional):
+    def __init__(self, data_file, phase_space_dim):
         """Loads the dataset from a pickle file
 
         Args:
           data_file: Path to the pickle file containing the dataset
+          phase space dim: list of the dimensions of the phase space, the rest are conditional variables
         """
         super(SystematicDataset, self).__init__()
         data = np.load(data_file, allow_pickle=True)
-        self.start_conditional = start_conditional
         self.data = torch.tensor(data['data'], dtype=torch.float32)
         self.mean = torch.tensor(data['mean'], dtype=torch.float32)
         self.cov = torch.tensor(data['cov'], dtype=torch.float32)
@@ -29,12 +29,21 @@ class SystematicDataset(torch.nn.Module):
         self.titles = data['par_names']
         self.cholesky = torch.linalg.cholesky(self.cov)
         self.nsample, self.ndim = self.data.shape
+        self.phase_space_dim = phase_space_dim
+        self.list_dim_conditionnal = [i for i in range(self.ndim) if i not in phase_space_dim]
 
     def __len__(self):
         return self.nsample
 
     def __getitem__(self, idx):
-        return self.data[idx,:self.start_conditional], self.data[idx,self.start_conditional:], self.ind_n_log_g(self.data[idx,:]), self.log_p[idx].unsqueeze(1)
+        """Returns a batch of data points and the log density of the data distribution
+
+        Args:
+          idx: Index of the batch
+          """
+        
+        return self.data[idx,self.phase_space_dim], self.data[idx,self.list_dim_conditionnal],-self.n_log_g(self.data[idx,:]),-self.n_log_g(self.data[idx,self.list_dim_conditionnal]),-self.log_p[idx]
+        
     
     def get_cov(self):
         return self.cov
@@ -56,7 +65,8 @@ class SystematicDataset(torch.nn.Module):
         Returns:
           Log density of the data distribution
         """
-        return 0.5 * (self.ndim * np.log(2 * np.pi) + torch.sum(x**2, dim=1))
+        n_dim = x.shape[1]
+        return 0.5 * (n_dim * np.log(2 * np.pi) + torch.sum(x**2, dim=1))
     
     def log_prob(self, gundam=False, idx=None):
         """Returns the log density of the data distribution from the file or by computing it with GUNDAM (not implemented)"""
@@ -65,7 +75,7 @@ class SystematicDataset(torch.nn.Module):
         else:
             if idx is None:
                 raise ValueError("Please provide an index to compute the log probability")
-            return self.data[idx,:self.start_conditional], self.data[idx,self.start_conditional:],-self.ind_n_log_g(self.data[idx,:]),-self.log_p[idx]
+            return self.data[idx[:, None],self.phase_space_dim], self.data[idx[:, None],self.list_dim_conditionnal],-self.n_log_g(self.data[idx,:]),-self.n_log_g(self.data[idx[:, None],self.list_dim_conditionnal]),-self.log_p[idx]
         
         
     def transform_eigen_space_to_data_space(self, x):

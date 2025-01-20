@@ -27,12 +27,13 @@ parser.add_argument('--data_file', type=str, default='Dataset/pickle_files/test.
 parser.add_argument('--batch_size', type=int, default=1000, help='Batch size')
 parser.add_argument('--nflows', type=int, default=10, help='Number of flows')
 parser.add_argument('--nhidden', type=int, default=256, help='Number of hidden units in the neural networks')
-parser.add_argument('--nepochs', type=int, default=100, help='Number of epochs')
+parser.add_argument('--nepochs', type=int, default=1000, help='Number of epochs')
 parser.add_argument('--lr', type=float, default=0.00001, help='Learning rate')
 parser.add_argument('--conditional', type=int, default=4, help='Number of conditional dimensions')
 parser.add_argument('--output_dir', type=str, default='output', help='Output directory')
 parser.add_argument('--seed', type=int, default=0, help='Random seed')
 parser.add_argument('--num_val', type=int, default=1000, help='Number of validation samples')
+parser.add_argument('--list_dim_phase_space', type=list, default=[8,9,10,11], help='List of the dimensions of the phase space')
 args = parser.parse_args()
 
 # Set random seed
@@ -55,10 +56,10 @@ def plot_subplot_hist_model(z, dimension_names, epoch):
     for i in range(4):
         for j in range(4):
             if i == j:
-                axes[i, j].hist(z[:, i], bins=300, alpha=0.7)
+                axes[i, j].hist(z[:, i], bins=100, alpha=0.7)
                 axes[i, j].set_xlabel(dimension_names[i])
             else:
-                axes[i, j].hist2d(z[:, j], z[:, i], bins=100, density=True, cmap='viridis')
+                axes[i, j].hist2d(z[:, j], z[:, i], bins=50, density=True, cmap='viridis')
                 axes[i, j].set_xlabel(dimension_names[j])
                 axes[i, j].set_ylabel(dimension_names[i])
 
@@ -66,15 +67,15 @@ def plot_subplot_hist_model(z, dimension_names, epoch):
     plt.tight_layout()
     plt.savefig(f'img/learned_distributions.png')
     plt.close()
-
+num_dim = len(args.list_dim_phase_space)
 # Load the dataset
-dataset = SystematicDataset(args.data_file, args.conditional)
-dimension_names = dataset.titles
+dataset = SystematicDataset(args.data_file, args.list_dim_phase_space)
+dimension_names = [dataset.titles[i].split('/')[-1] for i in args.list_dim_phase_space]
 
 # Initialize the normalizing flow model
-target = SystematicDataset(args.data_file, args.conditional)
-base = nf.distributions.DiagGaussian(args.conditional)
-flow_layers =[nf.flows.AutoregressiveRationalQuadraticSpline(args.conditional, 1, args.nhidden, num_context_channels=dataset.ndim-args.conditional, num_bins=9, tail_bound=torch.ones(args.conditional)*3.0, permute_mask=True) for _ in range(args.nflows)]
+target = SystematicDataset(args.data_file, args.list_dim_phase_space)
+base = nf.distributions.DiagGaussian(num_dim)
+flow_layers =[nf.flows.AutoregressiveRationalQuadraticSpline(num_dim, 1, args.nhidden, num_context_channels=12-num_dim, num_bins=9, tail_bound=torch.ones(num_dim)*3.0, permute_mask=True) for _ in range(args.nflows)]
 model = SystematicFlow(base, flow_layers, target)
 
 def checkpoint_and_plot_losses(losses, val_losses, output_dir):
@@ -117,7 +118,7 @@ beta = 1
 for epoch in range(args.nepochs):
     idx = np.random.choice(train_idx, args.batch_size, replace=False)
     optimizer.zero_grad()
-    loss = model.forward_kld_importance(idx, verbose=False)
+    loss = model.forward_kld_importance(idx, verbose=True)
     loss.backward()
     optimizer.step()
     scheduler.step()
@@ -125,10 +126,10 @@ for epoch in range(args.nepochs):
     with torch.no_grad():
         val_loss = model.symmetric_kld_importance(val_idx, alpha=alpha, beta=beta)
         val_losses.append(val_loss.item())
-    if epoch % 100 :
+    if epoch % 100 == 0:
         print('Epoch %d, loss = %.2f, val_loss = %.2f' % (epoch, loss.item(), val_loss.item()))
         checkpoint_and_plot_losses(train_losses, val_losses, args.output_dir)
-        context_test= torch.randn(args.num_val, dataset.ndim-args.conditional).to(device)
+        context_test= torch.randn(args.num_val, dataset.ndim-num_dim).to(device)
         z, _= model.sample(args.num_val, context=context_test)
         z = z.detach().cpu().numpy()
         plot_subplot_hist_model(z, dimension_names, epoch)
