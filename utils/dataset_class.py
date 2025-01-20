@@ -25,7 +25,10 @@ class SystematicDataset(torch.nn.Module):
         self.data = torch.tensor(data['data'], dtype=torch.float32)
         self.mean = torch.tensor(data['mean'], dtype=torch.float32)
         self.cov = torch.tensor(data['cov'], dtype=torch.float32)
-        self.log_p = torch.tensor(data['log_p'], dtype=torch.float32)
+        self.norm = 1.1084
+        p = torch.exp(-torch.tensor(data['log_p'], dtype=torch.float32))  
+        p_normalized = p / self.norm  
+        self.log_p = -torch.log(p_normalized)  
         self.titles = data['par_names']
         self.cholesky = torch.linalg.cholesky(self.cov)
         self.nsample, self.ndim = self.data.shape
