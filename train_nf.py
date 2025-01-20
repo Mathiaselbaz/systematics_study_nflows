@@ -1,5 +1,5 @@
 # Train the normalizing flows model using the normflows package
-# It also uses the SystematicDataset class in and SystematicFlows class in utils
+# It uses the SystematicDataset class and SystematicFlows class in utils
 
 import torch
 import numpy as np
@@ -13,6 +13,7 @@ from utils.nf_class import SystematicFlow
 from torch.utils.data import DataLoader
 from torch.optim import Adam
 from torch.optim.lr_scheduler import ExponentialLR
+import tqdm
 import torch.nn as nn
 import time
 import sys
@@ -23,8 +24,8 @@ import tqdm
 
 # Parse arguments
 parser = argparse.ArgumentParser()
-parser.add_argument('--data_file', type=str, default='Dataset/pickle_files/test.pickle', help='Path to the dataset file')
-parser.add_argument('--batch_size', type=int, default=1000, help='Batch size')
+parser.add_argument('--data_file', type=str, default='Dataset/pickle_files/test_100k.pkl', help='Path to the dataset file')
+parser.add_argument('--batch_size', type=int, default=5000, help='Batch size')
 parser.add_argument('--nflows', type=int, default=10, help='Number of flows')
 parser.add_argument('--nhidden', type=int, default=256, help='Number of hidden units in the neural networks')
 parser.add_argument('--nepochs', type=int, default=1000, help='Number of epochs')
@@ -32,7 +33,7 @@ parser.add_argument('--lr', type=float, default=0.00001, help='Learning rate')
 parser.add_argument('--conditional', type=int, default=4, help='Number of conditional dimensions')
 parser.add_argument('--output_dir', type=str, default='output', help='Output directory')
 parser.add_argument('--seed', type=int, default=0, help='Random seed')
-parser.add_argument('--num_val', type=int, default=1000, help='Number of validation samples')
+parser.add_argument('--num_val', type=int, default=5000, help='Number of validation samples')
 parser.add_argument('--list_dim_phase_space', type=list, default=[8,9,10,11], help='List of the dimensions of the phase space')
 args = parser.parse_args()
 
@@ -115,10 +116,10 @@ train_idx = np.setdiff1d(np.arange(len(dataset)), val_idx)
 alpha = 0
 beta = 1
 
-for epoch in range(args.nepochs):
+for epoch in tqdm.tqdm(range(args.nepochs)):
     idx = np.random.choice(train_idx, args.batch_size, replace=False)
     optimizer.zero_grad()
-    loss = model.forward_kld_importance(idx, verbose=True)
+    loss = model.forward_kld_importance(idx, verbose=False)
     loss.backward()
     optimizer.step()
     scheduler.step()
