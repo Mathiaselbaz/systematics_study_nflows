@@ -35,6 +35,7 @@ parser.add_argument('--output_dir', type=str, default='output', help='Output dir
 parser.add_argument('--seed', type=int, default=0, help='Random seed')
 parser.add_argument('--num_val', type=int, default=5000, help='Number of validation samples')
 parser.add_argument('--list_dim_phase_space', type=list, default=[8,9,10,11], help='List of the dimensions of the phase space')
+parser.add_argument('--tail_bound', type=float, default=5.0, help='Tail bounds for all dimension in sigma')
 args = parser.parse_args()
 
 # Set random seed
@@ -76,7 +77,7 @@ dimension_names = [dataset.titles[i].split('/')[-1] for i in args.list_dim_phase
 # Initialize the normalizing flow model
 target = SystematicDataset(args.data_file, args.list_dim_phase_space)
 base = nf.distributions.DiagGaussian(num_dim)
-flow_layers =[nf.flows.AutoregressiveRationalQuadraticSpline(num_dim, 1, args.nhidden, num_context_channels=12-num_dim, num_bins=9, tail_bound=torch.ones(num_dim)*3.0, permute_mask=True) for _ in range(args.nflows)]
+flow_layers =[nf.flows.AutoregressiveRationalQuadraticSpline(num_dim, 1, args.nhidden, num_context_channels=12-num_dim, num_bins=9, tail_bound=torch.ones(num_dim)*args.tail_bound, permute_mask=True) for _ in range(args.nflows)]
 model = SystematicFlow(base, flow_layers, target)
 
 def checkpoint_and_plot_losses(losses, val_losses, output_dir):
@@ -128,6 +129,8 @@ for epoch in tqdm.tqdm(range(args.nepochs)):
         val_loss = model.symmetric_kld_importance(val_idx, alpha=alpha, beta=beta)
         val_losses.append(val_loss.item())
     if epoch % 100 == 0:
+        with torch.no_grad():
+            val_loss = model.symmetric_kld_importance(val_idx, alpha=alpha, beta=beta, verbose = True, plot_hist_weight = True)
         print('Epoch %d, loss = %.2f, val_loss = %.2f' % (epoch, loss.item(), val_loss.item()))
         checkpoint_and_plot_losses(train_losses, val_losses, args.output_dir)
         context_test= torch.randn(args.num_val, dataset.ndim-num_dim).to(device)

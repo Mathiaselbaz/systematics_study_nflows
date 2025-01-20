@@ -2,7 +2,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
-
+from matplotlib import pyplot as plt
 
 from normflows.core import NormalizingFlow
 from normflows import utils, distributions
@@ -143,7 +143,7 @@ class SystematicFlow(NormalizingFlow):
         log_q += self.q0.log_prob(z, context=context)
         return -torch.mean(log_q)
     
-    def forward_kld_importance(self, idx, verbose):
+    def forward_kld_importance(self, idx, verbose = False, plot_hist_weight = False):
         """Estimates forward KL divergence  with importance sampling  for a given index"""
 
         device = self.device
@@ -153,17 +153,22 @@ class SystematicFlow(NormalizingFlow):
         log_p = log_p.unsqueeze(1).to(device)
         zb = zb.to(device)
         context = context.to(device)
-        log_q = self.log_prob(zb, context=context)
+        log_q = self.log_prob(zb, context=context).unsqueeze(1)
         if verbose :
             print('log_q : ', torch.mean(log_q).item())
             print('log_p : ', torch.mean(log_p).item())
             print('log_g : ', torch.mean(log_g).item())
             print('log_g_context : ', torch.mean(log_g_cond).item())
             print('Forward kld :', torch.mean(torch.exp((log_p - log_g ))*(log_p - log_q - log_g_cond)).item())
-            print('Weights :', torch.mean(torch.exp(log_p - log_g )).item())
+            print(' Mean Weights :', torch.mean(torch.exp(log_p - log_g )).item())
+        if plot_hist_weight :
+          plt.figure()
+          plt.hist((log_p - log_g ).detach().cpu().numpy())
+          plt.title('Log weights Forward KLD')
+          plt.savefig('img/Weight_forward')
         return torch.mean(torch.exp((log_p - log_g ))*(log_p - log_q - log_g_cond))
     
-    def reverse_kld_importance(self, idx, verbose):
+    def reverse_kld_importance(self, idx, verbose = False, plot_hist_weight = False):
         """Estimates reverse KL divergence  with importance sampling  for a given index"""
 
         device = self.device
@@ -173,22 +178,26 @@ class SystematicFlow(NormalizingFlow):
         log_p = log_p.unsqueeze(1).to(device)
         zb = zb.to(device)
         context = context.to(device)
-        log_q = self.log_prob(zb, context=context)
+        log_q = self.log_prob(zb, context=context).unsqueeze(1)
         
         if verbose :
             print('log_q : ', torch.mean(log_q).item())
             print('log_p : ', torch.mean(log_p).item())
             print('log_g : ', torch.mean(log_g).item())
             print('log_g_context : ', torch.mean(log_g_cond).item())
-            print('Weights :', torch.mean(torch.exp(log_q - log_g +log_g_cond)).item())
+            print(' Mean Weights :', torch.mean(torch.exp(log_q - log_g +log_g_cond)).item())
             print('Reverse kld :', torch.mean(torch.exp((log_q - log_g +log_g_cond))*(log_q - log_p + log_g_cond)).item())
-            
+        if plot_hist_weight :
+          plt.figure()
+          plt.hist(((log_q - log_g +log_g_cond)).detach().cpu().numpy())
+          plt.title('Log weights Reverse KLD')
+          plt.savefig('img/Weight_reverse')   
         return torch.mean(torch.exp((log_q - log_g +log_g_cond))*(log_q - log_p + log_g_cond))
     
-    def symmetric_kld_importance(self, idx, alpha=1, beta=1, verbose=False):
+    def symmetric_kld_importance(self, idx, alpha=1, beta=1, verbose=False, plot_hist_weight = False):
         """Estimates symmetric KL divergence  with importance sampling  for a given index using the two functions above"""
         
-        return alpha*self.reverse_kld_importance(idx, verbose) + beta*self.forward_kld_importance(idx, verbose)
+        return alpha*self.reverse_kld_importance(idx, verbose, plot_hist_weight=plot_hist_weight) + beta*self.forward_kld_importance(idx, verbose, plot_hist_weight = plot_hist_weight)
     
 
     def reverse_kld(self, num_samples=1, context=None, beta=1.0, score_fn=True):
