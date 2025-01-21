@@ -6,6 +6,7 @@ from matplotlib import pyplot as plt
 
 from normflows.core import NormalizingFlow
 from normflows import utils, distributions
+from matplotlib.colors import LogNorm
 
 
 class SystematicFlow(NormalizingFlow):
@@ -157,6 +158,34 @@ class SystematicFlow(NormalizingFlow):
           plt.savefig('img/Weight_nf_vs_llh')
           plt.close()
 
+          plt.figure(figsize=(8, 6))
+          hist = plt.hist2d(-log_p.squeeze(1).detach().cpu().numpy(), -(log_q.squeeze(1) + log_g_cond.squeeze(1)).detach().cpu().numpy(), bins=50, norm=LogNorm(), cmap='viridis')
+          plt.xlim(10,35)
+          plt.ylim(10,35)
+          # Add colorbar
+          cbar = plt.colorbar(hist[3])
+
+          # Add ESS text
+          plt.text(
+              0.05,
+              0.95,
+              f'ESS: {ess_percentage:.2f}%',
+              transform=plt.gca().transAxes,
+              fontsize=12,
+              verticalalignment='top',
+              horizontalalignment='left',
+          )
+
+          # Set title and labels
+          plt.title('-log(p) vs -log(NF)')
+          plt.xlabel('-log(p)')
+          plt.ylabel('-log(NF)')
+
+          # Save and show plot
+          plt.savefig('img/NLLH_vs_NLNF.png')
+          plt.close()
+
+
           plt.figure()
           weights = torch.exp(log_p - log_g ).detach().cpu().numpy()
           ess = (np.sum(weights)**2) / np.sum(weights**2)
@@ -168,6 +197,36 @@ class SystematicFlow(NormalizingFlow):
           plt.yscale('log')
           plt.savefig('img/Weights_gaussian_vs_llh')
           plt.close()
+
+          plt.figure(figsize=(8, 6))
+          hist = plt.hist2d(-log_p.squeeze(1).detach().cpu().numpy(), -(log_g).squeeze(1).detach().cpu().numpy(), bins=50, norm=LogNorm(), cmap='viridis')
+          plt.xlim(10,35)
+          plt.ylim(10,35)
+
+          # Add colorbar
+          cbar = plt.colorbar(hist[3])
+          cbar.set_label('Weight Density (log scale)')
+
+          # Add ESS text
+          plt.text(
+              0.05,
+              0.95,
+              f'ESS: {ess_percentage:.2f}%',
+              transform=plt.gca().transAxes,
+              fontsize=12,
+              verticalalignment='top',
+              horizontalalignment='left',
+          )
+
+          # Set title and labels
+          plt.title('-log(p) vs -log(g)')
+          plt.xlabel('-log(p)')
+          plt.ylabel('-log(g)')
+
+          # Save and show plot
+          plt.savefig('img/NLLH_vs_NLg.png')
+          plt.close()
+
         kld = torch.mean(torch.exp((log_p - log_g ))*(log_p - log_q - log_g_cond))
         del(log_p,log_g, log_g_cond, log_q)
         return kld

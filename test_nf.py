@@ -59,7 +59,7 @@ def transform_to_real_space(z, mean_prior, cov_prior):
     L = np.linalg.cholesky(cov_prior)
     return np.dot(z, L.T) + mean_prior
 
-def plot_pairwise(z, prior_means, prior_stds, out_name):
+def plot_pairwise(z, names, prior_means, prior_stds, out_name):
     d = z.shape[1]
     fig, axes = plt.subplots(d, d, figsize=(3*d, 3*d))
     bins = 50
@@ -74,8 +74,15 @@ def plot_pairwise(z, prior_means, prior_stds, out_name):
                 pdf = (1/(prior_stds[i]*np.sqrt(2*np.pi))) * np.exp(-0.5*((xvals - prior_means[i])/prior_stds[i])**2)
                 w = (z[:, i].max() - z[:, i].min()) / bins
                 ax.plot(xvals, pdf * len(z[:, i]) * w, color='red', linewidth=1.5)
+                ax.set_xlabel(names[i])
+                
             else:
                 ax.hist2d(z[:, j], z[:, i], bins=bins, density=True, cmap='plasma')
+                ax.set_xlabel(names[j])
+                ax.set_ylabel(names[i])
+                ax.set_xticks([])
+                ax.set_yticks([])
+    plt.tight_layout()
     plt.savefig(out_name, dpi=150)
     plt.close(fig)
 
@@ -87,14 +94,16 @@ def plot_1d(z, names, vars_to_plot, prior_means, prior_stds, out_name):
     bins = 50
     for n, idx in enumerate(vars_to_plot):
         ax = axes[n]
-        ax.hist(z[:, idx], bins=bins, histtype='step', color='darkorange', linewidth=1.5, label='Data')
+        ax.hist(z[:, idx], bins=bins, histtype='step', color='darkorange', linewidth=1.5, label='Normalizing Flows samples')
         xvals = np.linspace(z[:, idx].min(), z[:, idx].max(), 200)
         pdf = (1/(prior_stds[idx]*np.sqrt(2*np.pi))) * np.exp(-0.5*((xvals - prior_means[idx])/prior_stds[idx])**2)
         w = (z[:, idx].max() - z[:, idx].min()) / bins
-        ax.plot(xvals, pdf * len(z[:, idx]) * w, color='red', linewidth=1.5, label='Prior')
+        ax.plot(xvals, pdf * len(z[:, idx]) * w, color='red', linewidth=1.5, label='MINUIT Gaussian')
+        ax.set_yticks([])
         ax.set_xlabel(names[idx], fontsize=10)
         ax.set_ylabel("Counts", fontsize=10)
         ax.legend(loc='best', fontsize=8)
+        
     plt.tight_layout()
     plt.savefig(out_name, dpi=150)
     plt.close(fig)
@@ -102,7 +111,7 @@ def plot_1d(z, names, vars_to_plot, prior_means, prior_stds, out_name):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_file', type=str, default='Dataset/pickle_files/configMarginalise_Fit_configOa2021_Asimov_12Pars_1M.pkl')
-    parser.add_argument('--list_dim_phase_space', type=parse_list, default=[4,5,6,7,8,9,10,11])
+    parser.add_argument('--list_dim_phase_space', type=parse_list, default=[8,9,10,11])
     parser.add_argument('--model_path', type=str, default='output/model.pth')
     parser.add_argument('--output_dir', type=str, default='img')
     parser.add_argument('--nflows', type=int, default=5)
@@ -110,7 +119,7 @@ def main():
     parser.add_argument('--tail_bound', type=float, default=5.0)
     parser.add_argument('--n_samples', type=int, default=1000000)
     parser.add_argument('--gen_batch_size', type=int, default=10000)
-    parser.add_argument('--vars_to_plot', type=parse_list, default=[4,5,6,7])
+    parser.add_argument('--vars_to_plot', type=parse_list, default=[0,1,2,3])
     parser.add_argument('--transform_to_real_space', type=bool, default=True)
     args = parser.parse_args()
 
@@ -140,7 +149,7 @@ def main():
         prior_stds = np.ones(num_dim)
 
     pairwise_out = os.path.join(args.output_dir, "distribution_prediction.png")
-    plot_pairwise(z, prior_means, prior_stds, pairwise_out)
+    plot_pairwise(z, names, prior_means, prior_stds, pairwise_out)
 
     hist_out = os.path.join(args.output_dir, "1d_histograms.png")
     plot_1d(z, names, args.vars_to_plot, prior_means, prior_stds, hist_out)
