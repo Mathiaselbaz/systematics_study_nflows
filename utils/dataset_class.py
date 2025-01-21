@@ -161,13 +161,10 @@ class SystematicDataset(torch.nn.Module):
             n_bins (int): Number of bins for the histogram.
             save_path (str or None): If not None, saves the figure to this path.
         """
-        # n_log_g over the entire dataset (returns shape [nsample])
         nlogg_vals = self.n_log_g(self.data)
         
-        # log_p also shape [nsample], so do the difference
-        diff_vals = nlogg_vals - self.log_p  # shape [nsample]
+        diff_vals = nlogg_vals - self.log_p 
         
-        # Exponentiate to get the weights
         weights = torch.exp(diff_vals)
         bins = np.logspace(-2, 6, 100)
         
