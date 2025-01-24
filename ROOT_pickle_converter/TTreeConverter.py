@@ -33,8 +33,12 @@ filtered_parameters = [
     params for params, chisquares in zip(parameters_array, chisquares_array) if len(chisquares) == dimension
 ]
 filtered_NLL = [
-    nll for nll, chisquares in zip(NLL, chisquares_array) if len(chisquares) == dimension
+    nll for nll, chisquares in zip(NLL, chisquares_array) if (len(chisquares) == dimension and not np.isinf(nll) )
 ]
+if(np.any(np.isinf(NLL))):
+    print("There are infinite values in the NLL")
+    print(np.where(np.isinf(NLL)))
+
 filtered_NLG = [
     nlg for nlg, chisquares in zip(NLG, chisquares_array) if len(chisquares) == dimension
 ]
