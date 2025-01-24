@@ -41,7 +41,7 @@ if np.any(np.isinf(NLL)):
     # Count the number of infinite values
     print("Number of infinite values in NLL:")
     print(np.count_nonzero(np.isinf(NLL)))
-    print(f"{np.count_nonzero(np.isinf(NLL))/len(NLL)*100}% of the values are infinite")
+    print(f"{np.count_nonzero(np.isinf(NLL))/len(NLL)*100}% of the values are infinite. Trashing them.")
 
 
 filtered_NLG = [
@@ -87,11 +87,17 @@ shifted_parameters = filtered_parameters - means_vector
 cholesky = np.linalg.cholesky(covariance_matrix)
 inv_cholesky = np.linalg.inv(cholesky)
 #check if shifted_parameters has infinite values
+print("Are there infinite values in the shifted parameters?")
 print(np.any(np.isinf(shifted_parameters)))
 # print(f"LogDeterminant: {np.log(np.linalg.det(cholesky))/12}")
 eigen_space = np.array([inv_cholesky @ vector for vector in shifted_parameters])
 #check if eigen_space has infinite values
+print("Are there infinite values in the eigen space?")
 print(np.any(np.isinf(eigen_space)))
+print("Are there infinite values in the NLG?")
+print(np.any(np.isinf(filtered_NLG)))
+print("Are there infinite values in the NLL?")
+print(np.any(np.isinf(filtered_NLL)))
 
 # Dictionary combining all elements
 data_dict = {
@@ -171,12 +177,11 @@ if(dimension <= 12):
 
 # check 2: the NLG and the NLL should be reasonably close
 fig, ax = plt.subplots()
-ax.hist(filtered_NLG, bins=200, color='blue', alpha=0.7, edgecolor='black', label="NLG", range=(0, 1500))
-ax.hist(filtered_NLL, bins=200, color='red', alpha=0.7, edgecolor='black', label="NLL", range=(0, 1500))
+ax.hist(filtered_NLG, bins=200, color='blue', alpha=0.7, edgecolor='black', label="NLG")
+ax.hist(filtered_NLL, bins=200, color='red', alpha=0.7, edgecolor='black', label="NLL")
 ax.set_title("NLg vs. NLL")
 ax.set_xlabel("negative log probability")
 ax.legend()
-print(f"Log of sqrt(2pi = {np.log((np.sqrt(2*np.pi)))}")
 # save the plots
 plt.savefig("NLg_vs_NLL.png")
 # plt.show()
