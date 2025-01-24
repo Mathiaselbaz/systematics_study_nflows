@@ -171,7 +171,7 @@ plt.savefig("NLg_vs_NLL.png")
 
 # check 3: plot NLg and NLL in 2D histogram
 fig, ax = plt.subplots()
-h = ax.hist2d(NLG, NLL, bins=200, cmap='plasma', range=((800, 1500), (800, 1500)))
+h = ax.hist2d(NLG, NLL, bins=200, cmap='plasma')
 fig.colorbar(h[3], ax=ax)
 ax.set_xlabel("NLG")
 ax.set_ylabel("NLL")
