@@ -165,8 +165,7 @@ ax.set_title("NLg vs. NLL")
 ax.set_xlabel("negative log probability")
 ax.legend()
 print(f"Log of sqrt(2pi = {np.log((np.sqrt(2*np.pi)))}")
-
-
-
-plt.show()
-
+# save the plots
+plt.savefig("NLg_vs_NLL.png")
+# plt.show()
+plt.close()
