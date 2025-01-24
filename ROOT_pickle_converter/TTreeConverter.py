@@ -77,7 +77,7 @@ print(type(filtered_parameters))
 shifted_parameters = filtered_parameters - means_vector
 cholesky = np.linalg.cholesky(covariance_matrix)
 inv_cholesky = np.linalg.inv(cholesky)
-print(f"LogDeterminant: {np.log(np.linalg.det(cholesky))/12}")
+# print(f"LogDeterminant: {np.log(np.linalg.det(cholesky))/12}")
 eigen_space = np.array([inv_cholesky @ vector for vector in shifted_parameters])
 
 
@@ -156,10 +156,11 @@ if(dimension <= 12):
     plt.tight_layout()
     # plt.show()
 
+
 # check 2: the NLG and the NLL should be reasonably close
 fig, ax = plt.subplots()
-ax.hist(NLG, bins=200, color='blue', alpha=0.7, edgecolor='black', label="NLG")
-ax.hist(NLL, bins=200, color='red', alpha=0.7, edgecolor='black', label="NLL")
+ax.hist(NLG, bins=200, color='blue', alpha=0.7, edgecolor='black', label="NLG", range=(0, 1500))
+ax.hist(NLL, bins=200, color='red', alpha=0.7, edgecolor='black', label="NLL", range=(0, 1500))
 ax.set_title("NLg vs. NLL")
 ax.set_xlabel("negative log probability")
 ax.legend()
