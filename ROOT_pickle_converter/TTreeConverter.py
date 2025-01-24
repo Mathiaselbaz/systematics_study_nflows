@@ -11,7 +11,6 @@ if(len(sys.argv) != 3):
     sys.exit(1)
 
 
-dimension = 12
 
 # open the ROOT file
 input_file_name = sys.argv[1]
@@ -26,6 +25,7 @@ print(tree.keys())
 
 # read TTree branches
 parameters_array = tree["Parameters"].array()
+dimension = len(parameters_array[0])
 chisquares_array = tree["weightsChiSquare"].array()
 NLL = tree["LLH"].array()
 NLG = tree["gLLH"].array()
@@ -156,16 +156,16 @@ if(dimension <= 12):
     plt.tight_layout()
     # plt.show()
 
-    # check 2: the NLG and the NLL should be reasonably close
-    fig, ax = plt.subplots()
-    ax.hist(NLG, bins=200, color='blue', alpha=0.7, edgecolor='black', label="NLG")
-    ax.hist(NLL, bins=200, color='red', alpha=0.7, edgecolor='black', label="NLL")
-    ax.set_title("NLg vs. NLL")
-    ax.set_xlabel("negative log probability")
-    ax.legend()
-    print(f"Log of sqrt(2pi = {np.log((np.sqrt(2*np.pi)))}")
+# check 2: the NLG and the NLL should be reasonably close
+fig, ax = plt.subplots()
+ax.hist(NLG, bins=200, color='blue', alpha=0.7, edgecolor='black', label="NLG")
+ax.hist(NLL, bins=200, color='red', alpha=0.7, edgecolor='black', label="NLL")
+ax.set_title("NLg vs. NLL")
+ax.set_xlabel("negative log probability")
+ax.legend()
+print(f"Log of sqrt(2pi = {np.log((np.sqrt(2*np.pi)))}")
 
 
 
-    plt.show()
+plt.show()
 
