@@ -77,9 +77,12 @@ print(type(filtered_parameters))
 shifted_parameters = filtered_parameters - means_vector
 cholesky = np.linalg.cholesky(covariance_matrix)
 inv_cholesky = np.linalg.inv(cholesky)
+#check if shifted_parameters has infinite values
+print(np.any(np.isinf(shifted_parameters)))
 # print(f"LogDeterminant: {np.log(np.linalg.det(cholesky))/12}")
 eigen_space = np.array([inv_cholesky @ vector for vector in shifted_parameters])
-
+#check if eigen_space has infinite values
+print(np.any(np.isinf(eigen_space)))
 
 # Dictionary combining all elements
 data_dict = {
