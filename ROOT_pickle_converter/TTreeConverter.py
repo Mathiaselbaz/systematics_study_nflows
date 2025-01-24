@@ -30,19 +30,22 @@ chisquares_array = tree["weightsChiSquare"].array()
 NLL = tree["LLH"].array()
 NLG = tree["gLLH"].array()
 filtered_parameters = [
-    params for params, chisquares in zip(parameters_array, chisquares_array) if len(chisquares) == dimension
+    params for params, nll, chisquares in zip(parameters_array, NLL, chisquares_array) if (len(chisquares) == dimension and not np.isinf(nll))
 ]
 filtered_NLL = [
     nll for nll, chisquares in zip(NLL, chisquares_array) if (len(chisquares) == dimension and not np.isinf(nll))
 ]
-# print filtered_NLL
-print(filtered_NLL)
+
 if np.any(np.isinf(NLL)):
     print("There are infinite values in the NLL")
-    print(np.where(np.isinf(NLL)))
+    # Count the number of infinite values
+    print("Number of infinite values in NLL:")
+    print(np.count_nonzero(np.isinf(NLL)))
+    print(f"{np.count_nonzero(np.isinf(NLL))/len(NLL)*100}% of the values are infinite")
+
 
 filtered_NLG = [
-    nlg for nlg, chisquares in zip(NLG, chisquares_array) if len(chisquares) == dimension
+    nlg for nlg, nll, chisquares in zip(NLG, NLL, chisquares_array) if (len(chisquares) == dimension and not np.isinf(nll))
 ]
 # overwrite the chisquare array AT THE END
 chisquares_array = [x for x in chisquares_array if len(x) == dimension]
@@ -168,8 +171,8 @@ if(dimension <= 12):
 
 # check 2: the NLG and the NLL should be reasonably close
 fig, ax = plt.subplots()
-ax.hist(NLG, bins=200, color='blue', alpha=0.7, edgecolor='black', label="NLG", range=(0, 1500))
-ax.hist(NLL, bins=200, color='red', alpha=0.7, edgecolor='black', label="NLL", range=(0, 1500))
+ax.hist(filtered_NLG, bins=200, color='blue', alpha=0.7, edgecolor='black', label="NLG", range=(0, 1500))
+ax.hist(filtered_NLL, bins=200, color='red', alpha=0.7, edgecolor='black', label="NLL", range=(0, 1500))
 ax.set_title("NLg vs. NLL")
 ax.set_xlabel("negative log probability")
 ax.legend()
@@ -180,8 +183,7 @@ plt.savefig("NLg_vs_NLL.png")
 
 # check 3: plot NLg and NLL in 2D histogram
 fig, ax = plt.subplots()
-h = ax.hist2d(NLG, NLL, bins=200, cmap='plasma')
-fig.colorbar(h[3], ax=ax)
+h = ax.hist2d(filtered_NLG, filtered_NLL, bins=200)
 ax.set_xlabel("NLG")
 ax.set_ylabel("NLL")
 plt.savefig("NLg_vs_NLL_2D.png")
