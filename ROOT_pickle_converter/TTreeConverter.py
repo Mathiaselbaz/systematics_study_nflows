@@ -168,4 +168,13 @@ print(f"Log of sqrt(2pi = {np.log((np.sqrt(2*np.pi)))}")
 # save the plots
 plt.savefig("NLg_vs_NLL.png")
 # plt.show()
+
+# check 3: plot NLg and NLL in 2D histogram
+fig, ax = plt.subplots()
+h = ax.hist2d(NLG, NLL, bins=200, cmap='plasma', range=((800, 1500), (800, 1500)))
+fig.colorbar(h[3], ax=ax)
+ax.set_xlabel("NLG")
+ax.set_ylabel("NLL")
+plt.savefig("NLg_vs_NLL_2D.png")
+# plt.show()
 plt.close()
