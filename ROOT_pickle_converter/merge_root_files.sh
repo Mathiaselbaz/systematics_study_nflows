@@ -1,5 +1,11 @@
 #!/bin/bash
 
+#check if the number of arguments is correct
+if [ "$#" -ne 1 ]; then
+    echo "Usage: $0 <input_dir>"
+    exit 1
+fi
+
 # Directory containing the ROOT files
 INPUT_DIR=$1
 # Directory to save merged batches
