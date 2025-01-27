@@ -8,6 +8,8 @@ import uproot
 import pickle
 import numpy as np
 from datetime import datetime
+import os
+
 
 if (len(sys.argv) != 3):
     print("Usage: python TTreeConverter.py <input_file> <output_file>")
@@ -17,11 +19,11 @@ if (len(sys.argv) != 3):
 input_file_name = sys.argv[1]
 # example: "Datasets/12params/configMarginalise_Fit_configOa2021_With_localMC_toy_9Pars_Asimov_nToys_10000.root"
 input_file = uproot.open(input_file_name)
-print("ROOT file contents")
+print("---> ROOT file contents")
 print(input_file.keys())
 tree_name = "margThrow"
 tree = input_file[tree_name]
-print("TTree branches:")
+print("---> TTree branches:")
 print(tree.keys())
 
 # read TTree branches
@@ -39,9 +41,9 @@ filtered_NLL = [
 ]
 
 if np.any(np.isinf(NLL)):
-    print("There are infinite values in the NLL")
+    print("---> There are infinite values in the NLL")
     # Count the number of infinite values
-    print("Number of infinite values in NLL:")
+    print("---> Number of infinite values in NLL:")
     print(np.count_nonzero(np.isinf(NLL)))
     print(f"{np.count_nonzero(np.isinf(NLL)) / len(NLL) * 100}% of the values are infinite. Trashing them.")
 
@@ -58,8 +60,7 @@ chisquares_array = np.array(chisquares_array)
 tnamed_name = "parameterFullTitles"
 tnamed = input_file[tnamed_name]
 tnamed_titles = list(tnamed)
-print("List of Strings:")
-print(type(tnamed_titles))
+print("---> List of Parameter names:")
 for i in range(len(tnamed_titles)):
     print(f"Parameter {i}: {tnamed_titles[i]}")
 
@@ -67,7 +68,7 @@ for i in range(len(tnamed_titles)):
 covariance_TH2D = input_file["postFitInfo/postFitCovarianceOriginal_TH2D"]
 cov_values, cov_x_edges, cov_y_edges = covariance_TH2D.to_numpy()
 covariance_matrix = np.array(cov_values)
-print("Covariance matrix extracted from TH2D:")
+print("---> Covariance matrix extracted from TH2D:")
 print(covariance_matrix)
 
 # read vector of mean values
@@ -76,7 +77,7 @@ tvector = f.Get("bestFitParameters_TVectorD")
 print(type(tvector))
 print(dir(tvector))
 means_vector = np.array(tvector)
-print("Means vector extracted from TVectorD:")
+print("---> Means vector extracted from TVectorD:")
 print(means_vector)
 
 # print the shapes of the arrays (debug)
@@ -90,16 +91,16 @@ shifted_parameters = filtered_parameters - means_vector
 cholesky = np.linalg.cholesky(covariance_matrix)
 inv_cholesky = np.linalg.inv(cholesky)
 #check if shifted_parameters has infinite values
-print("Are there infinite values in the shifted parameters?")
+print("---> Are there infinite values in the shifted parameters?", end='')
 print(np.any(np.isinf(shifted_parameters)))
 # print(f"LogDeterminant: {np.log(np.linalg.det(cholesky))/12}")
 eigen_space = np.array([inv_cholesky @ vector for vector in shifted_parameters])
 #check if eigen_space has infinite values
-print("Are there infinite values in the eigen space?")
+print("---> Are there infinite values in the eigen space?", end='')
 print(np.any(np.isinf(eigen_space)))
-print("Are there infinite values in the NLG?")
+print("---> Are there infinite values in the NLG?", end='')
 print(np.any(np.isinf(filtered_NLG)))
-print("Are there infinite values in the NLL?")
+print("---> Are there infinite values in the NLL?", end='')
 print(np.any(np.isinf(filtered_NLL)))
 
 # Dictionary combining all elements
@@ -120,6 +121,19 @@ dim_to_plot = 12
 # Create a grid of subplots
 fig, axes = plt.subplots(nrows=3, ncols=4, figsize=(15, 10))  # 3x4 grid for 12 variables
 axes = axes.flatten()  # Flatten the axes array for easy indexing
+
+# Create a folder to put the plots, named after the output file name
+# Get the current working directory
+workdir = os.getcwd()
+folder_name = os.path.splitext(os.path.basename(output_file_name))[0]
+folder_name = folder_name + "_conversion_plots"
+folder_path = os.path.join(workdir, folder_name)
+if not os.path.exists(folder_path):
+    os.makedirs(folder_path)
+    print(f"Folder created: {folder_path}")
+else:
+    print(f"Folder already exists: {folder_path}")
+
 
 random.seed(datetime.now().timestamp())
 # Plot each variable
@@ -148,7 +162,7 @@ for i in range(dim_to_plot):
     axes[i].plot(x, p * len(variable_data) * (xmax - xmin) / usedbins, 'k', linewidth=2)
 # Adjust layout for better spacing
 plt.tight_layout()
-plt.savefig("eigen_space_histograms.png")
+plt.savefig(f"{folder_path}/eigen_space_histograms.png")
 
 # Create another grid of subplots
 fig, axes = plt.subplots(nrows=3, ncols=4, figsize=(15, 10))  # 3x4 grid for 12 variables
@@ -164,7 +178,7 @@ for i in range(dim_to_plot):
     print(f"mu: {np.mean(variable_data):.3f}")
     print(f"sigma: {np.std(variable_data):.3f}")
 plt.tight_layout()
-plt.savefig("chisquare_vs_x2.png")
+plt.savefig(f"{folder_path}/chisquare_vs_x2.png")
 
 # draw covariance and correlation matrix as 2d histograms
 # Calculate correlation matrix
@@ -188,7 +202,7 @@ for ax in axes:
     ax.set_xlabel("Variables")
     ax.set_ylabel("Variables")
 plt.tight_layout()
-plt.savefig("covariance_and_correlation.png")
+plt.savefig(f"{folder_path}/covariance_and_correlation.png")
 
 # check 2: the NLG and the NLL should be reasonably close
 fig, ax = plt.subplots()
@@ -198,7 +212,7 @@ ax.set_title("negative-log-probability for LH and its gaussian approximation")
 ax.set_xlabel("negative log probability")
 ax.legend()
 # save the plots
-plt.savefig("NLg_vs_NLL.png")
+plt.savefig(f"{folder_path}/NLg_vs_NLL.png")
 # plt.show()
 
 # check 3: plot NLg and NLL in 2D histogram
@@ -220,6 +234,6 @@ line_max = min(x_max, y_max)
 ax.plot([line_min, line_max], [line_min, line_max], color='red', linestyle='--', linewidth=0.8)
 ax.set_xlabel("NLG")
 ax.set_ylabel("NLL")
-plt.savefig("NLg_vs_NLL_2D.png")
+plt.savefig(f"{folder_path}/NLg_vs_NLL_2D.png")
 # plt.show()
 plt.close()
