@@ -162,7 +162,7 @@ for i in range(dim_to_plot):
     variable_data = eigen_space[:, var_to_plot]
 
     # Plot histogram of the variable in its respective subplot
-    usedbins = 20
+    usedbins = 100
     axes[i].hist(variable_data, bins=usedbins, color='white', alpha=0.7, edgecolor='black')
     axes[i].set_title(f"{tnamed_titles[var_to_plot]}")
     axes[i].set_xlabel("Value")
