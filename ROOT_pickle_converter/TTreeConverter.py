@@ -25,6 +25,11 @@ tree_name = "margThrow"
 tree = input_file[tree_name]
 print("---> TTree branches:")
 print(tree.keys())
+# Check how many times "gundam/version_TNamed" appears in the keys
+print("---> Number of times 'gundam/version_TNamed' appears in the keys: ",end='')
+scaling_factor_covariance = sum("gundam/version_TNamed" in key for key in input_file.keys())
+print(scaling_factor_covariance)
+print("This will be applied as a scaling factor to the covariance matrix")
 
 # read TTree branches
 parameters_array = tree["Parameters"].array()
@@ -56,6 +61,9 @@ chisquares_array = [
     chisquares for chisquares, nll in zip(chisquares_array, NLL) if (len(chisquares) == dimension and not np.isinf(nll))
 ]
 chisquares_array = np.array(chisquares_array)
+
+print("---> Number of valid entries:")
+print(len(filtered_parameters))
 # read the parameter names
 tnamed_name = "parameterFullTitles"
 tnamed = input_file[tnamed_name]
@@ -67,7 +75,7 @@ for i in range(len(tnamed_titles)):
 # read covariance matrix
 covariance_TH2D = input_file["postFitInfo/postFitCovarianceOriginal_TH2D"]
 cov_values, cov_x_edges, cov_y_edges = covariance_TH2D.to_numpy()
-covariance_matrix = np.array(cov_values)
+covariance_matrix = np.array(cov_values/scaling_factor_covariance)
 print("---> Covariance matrix extracted from TH2D:")
 print(covariance_matrix)
 
@@ -91,16 +99,27 @@ shifted_parameters = filtered_parameters - means_vector
 cholesky = np.linalg.cholesky(covariance_matrix)
 inv_cholesky = np.linalg.inv(cholesky)
 #check if shifted_parameters has infinite values
-print("---> Are there infinite values in the shifted parameters?", end='')
+print("---> Are there infinite values in the shifted parameters? ", end='')
 print(np.any(np.isinf(shifted_parameters)))
+
 # print(f"LogDeterminant: {np.log(np.linalg.det(cholesky))/12}")
 eigen_space = np.array([inv_cholesky @ vector for vector in shifted_parameters])
+print(shifted_parameters.shape)
+print(cholesky.shape)
+for vector in shifted_parameters:
+    print(vector.shape)
+    print(inv_cholesky.shape)
+    print((inv_cholesky @ vector).shape)
+    break
+print(eigen_space.shape)
+print(1/np.std(eigen_space)**2)
+print(1/np.std(shifted_parameters)**2)
 #check if eigen_space has infinite values
-print("---> Are there infinite values in the eigen space?", end='')
+print("---> Are there infinite values in the eigen space?  ", end='')
 print(np.any(np.isinf(eigen_space)))
-print("---> Are there infinite values in the NLG?", end='')
+print("---> Are there infinite values in the NLG? ", end='')
 print(np.any(np.isinf(filtered_NLG)))
-print("---> Are there infinite values in the NLL?", end='')
+print("---> Are there infinite values in the NLL? ", end='')
 print(np.any(np.isinf(filtered_NLL)))
 
 # Dictionary combining all elements
@@ -144,10 +163,9 @@ for i in range(dim_to_plot):
 
     # Plot histogram of the variable in its respective subplot
     usedbins = 20
-    axes[i].hist(variable_data, bins=usedbins, color='blue', alpha=0.7, edgecolor='black')
+    axes[i].hist(variable_data, bins=usedbins, color='white', alpha=0.7, edgecolor='black')
     axes[i].set_title(f"{tnamed_titles[var_to_plot]}")
     axes[i].set_xlabel("Value")
-    axes[i].set_ylabel("Frequency")
     # Fit a gaussian on each subplot
     mu = np.mean(variable_data)
     sigma = np.std(variable_data)
@@ -157,7 +175,7 @@ for i in range(dim_to_plot):
     print(f"Stde: {sigma:.3f}")
     # overlap a normal distribution
     xmin, xmax = axes[i].get_xlim()
-    x = np.linspace(xmin, xmax, 100)
+    x = np.linspace(xmin, xmax, usedbins)
     p = np.exp(-0.5 * (x ** 2)) / (np.sqrt(2 * np.pi))
     axes[i].plot(x, p * len(variable_data) * (xmax - xmin) / usedbins, 'k', linewidth=2)
 # Adjust layout for better spacing
