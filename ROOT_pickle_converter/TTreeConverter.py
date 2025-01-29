@@ -50,7 +50,7 @@ if np.any(np.isinf(NLL)):
     # Count the number of infinite values
     print("---> Number of infinite values in NLL:")
     print(np.count_nonzero(np.isinf(NLL)))
-    print(f"{np.count_nonzero(np.isinf(NLL)) / len(NLL) * 100}% of the values are infinite. Trashing them.")
+    print(f"{(np.count_nonzero(np.isinf(NLL)) / len(NLL) * 100):.3f}% of the values are infinite. Trashing them.")
 
 filtered_NLG = [
     nlg for nlg, nll, chisquares in zip(NLG, NLL, chisquares_array) if
