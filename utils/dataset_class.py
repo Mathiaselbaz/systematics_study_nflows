@@ -1,39 +1,120 @@
-# Dataset class to train the normalizing flow model. 
-# It loads a pickle file with a numpy dictionnary.
-# It contains the nsample*ndim dataset in the eigenspace of the covariance matrix, the true probability not assuming gaussianity, the covariance matrix and the mean of the dataset before standardization.
-# This class is used in the training script. It inherits from torch.utils.data.Dataset.
-# """
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# =============================================================================
+#  Title: SystematicDataset Class
+#  Author: Mathias El Baz
+#  Date: 28/01/2025
+#  Description:
+#     Dataset class to train a Normalizing Flow model. It loads a pickle file 
+#     containing:
+#       - Nsample x Ndim dataset in the eigenspace of the covariance matrix
+#       - The true probability (not assuming Gaussianity)
+#       - Covariance matrix & mean of the dataset before standardization
+#     It inherits from torch.nn.Module and is used in the training script.
+# =============================================================================
 
 import numpy as np
 import torch
-from torch.utils.data import Dataset
 import matplotlib.pyplot as plt
-import seaborn as sns
-
+import os
+import glob
 
 
 class SystematicDataset(torch.nn.Module):
-    def __init__(self, data_file, phase_space_dim):
-        """Loads the dataset from a pickle file
+    def __init__(
+        self, 
+        data_dir,           # Directory containing batch_i.pkl files
+        phase_space_dim, 
+        batch_index=None    # If None, load all batches; otherwise load only batch_{batch_index}.pkl
+    ):
+        """
+        Loads the dataset from one or more pickle (.pkl) files.
 
         Args:
-          data_file: Path to the pickle file containing the dataset
-          phase space dim: list of the dimensions of the phase space, the rest are conditional variables
+            data_dir (str): Path to the directory containing batch_*.pkl files.
+            phase_space_dim (list[int]): Indices of the phase space dimensions. 
+                                         The remaining dimensions are treated as conditional variables.
+            batch_index (int or None): If an integer, load only batch_{batch_index}.pkl.
+                                       If None, load and concatenate all files matching batch_*.pkl.
         """
         super(SystematicDataset, self).__init__()
-        data = np.load(data_file, allow_pickle=True)
-        self.data = torch.tensor(data['data'], dtype=torch.float32)
-        self.mean = torch.tensor(data['mean'], dtype=torch.float32)
-        self.cov = torch.tensor(data['cov'], dtype=torch.float32)
-        self.norm = 1.23968
-        p = torch.exp(-torch.tensor(data['log_p'], dtype=torch.float32))  
-        p_normalized = p / self.norm  
-        self.log_p = -torch.log(p_normalized)  
-        self.titles = data['par_names']
+
+        # 1. Determine which files to load
+        if batch_index is None:
+            file_list = sorted(glob.glob(os.path.join(data_dir, "batch*.pkl")))
+            if len(file_list) == 0:
+                raise FileNotFoundError(
+                    f"No files found in {data_dir} matching 'batch*.pkl'"
+                )
+        else:
+            single_file = os.path.join(data_dir, f"batch{batch_index}.pkl")
+            if not os.path.isfile(single_file):
+                raise FileNotFoundError(f"File {single_file} does not exist.")
+            file_list = [single_file]
+
+        # 2. Load the first file once and extract shared metadata
+        first_file = file_list[0]
+        first_data = np.load(first_file, allow_pickle=True)
+        
+        # a) Common metadata
+        self.mean = torch.tensor(first_data['mean'], dtype=torch.float32)
+        
+        self.titles = first_data['par_names']
+        
+        # b) We'll assume the same covariance for all files
+        
+
+        # 3. Prepare lists for final concatenation
+        data_list = []
+        log_p_list = []
+
+        # -- Process the first file --
+        norm_first = np.median(np.std(first_data['data'], axis=0))
+        data_first = torch.tensor(first_data['data'], dtype=torch.float32) / norm_first
+        self.cov = torch.tensor(first_data['cov'], dtype=torch.float32)
+        self.cov = self.cov * norm_first**2
         self.cholesky = torch.linalg.cholesky(self.cov)
+        
+        log_p_first = torch.tensor(first_data['log_p'], dtype=torch.float32)
+        
+        # Compute per-file log_g and shift
+        log_g_first = self.n_log_g(data_first)
+        shift_first = torch.median(log_g_first) - torch.median(log_p_first)
+        log_p_first += shift_first
+        
+        data_list.append(data_first)
+        log_p_list.append(log_p_first)
+
+        # 4. Process remaining files
+        for fpath in file_list[1:]:
+            loaded_data = np.load(fpath, allow_pickle=True)
+            
+            # Compute norm for this file
+            norm_file = np.median(np.std(loaded_data['data'], axis=0))
+            
+            # Normalize data
+            data_file = torch.tensor(loaded_data['data'], dtype=torch.float32) / norm_file
+            log_p_file = torch.tensor(loaded_data['log_p'], dtype=torch.float32)
+            
+            # Compute log_g for the current file & apply shift
+            log_g_file = self.n_log_g(data_file)
+            shift_file = torch.median(log_g_file) - torch.median(log_p_file)
+            log_p_file += shift_file
+            
+            data_list.append(data_file)
+            log_p_list.append(log_p_file)
+
+        # 5. Concatenate
+        self.data = torch.cat(data_list, dim=0)
+        self.log_p = torch.cat(log_p_list, dim=0)
+
+        # 6. Final bookkeeping
         self.nsample, self.ndim = self.data.shape
         self.phase_space_dim = phase_space_dim
         self.list_dim_conditionnal = [i for i in range(self.ndim) if i not in phase_space_dim]
+
+        print(f"Number of files loaded: {len(file_list)}")
+        print(f"Dataset shape: {self.nsample}*{self.ndim}")
 
     def __len__(self):
         return self.nsample
@@ -43,24 +124,28 @@ class SystematicDataset(torch.nn.Module):
 
         Args:
           idx: Index of the batch
-          """
-        
-        return self.data[idx,self.phase_space_dim], self.data[idx,self.list_dim_conditionnal],-self.n_log_g(self.data[idx,:]),-self.n_log_g(self.data[idx,self.list_dim_conditionnal]),-self.log_p[idx]
-        
-    
+        """
+        return (
+            self.data[idx, self.phase_space_dim],
+            self.data[idx, self.list_dim_conditionnal],
+            -self.n_log_g(self.data[idx, :]),
+            -self.n_log_g(self.data[idx, self.list_dim_conditionnal]),
+            -self.log_p[idx]
+        )
+
     def get_cov(self):
         return self.cov
-    
+
     def get_mean(self):
         return self.mean
-    
+
     def ind_n_log_g(self, x):
         """Computes the log density of the data distribution for one dimension assuming gaussianity"""
         return 0.5 * (np.log(2 * np.pi) + x**2)
 
-    
     def n_log_g(self, x):
-        """Computes the log density of the data distribution assuning gaussianity by summing the log density of each data point
+        """Computes the log density of the data distribution assuming gaussianity
+        by summing the log density of each data point
 
         Args:
           x: Batch of data points
@@ -70,113 +155,47 @@ class SystematicDataset(torch.nn.Module):
         """
         n_dim = x.shape[1]
         return 0.5 * (n_dim * np.log(2 * np.pi) + torch.sum(x**2, dim=1))
-    
+
     def log_prob(self, gundam=False, idx=None):
-        """Returns the log density of the data distribution from the file or by computing it with GUNDAM (not implemented)"""
+        """Returns the log density of the data distribution from the file 
+        or by computing it with GUNDAM (not implemented)
+        """
         if gundam:
             raise NotImplementedError
         else:
             if idx is None:
                 raise ValueError("Please provide an index to compute the log probability")
-            return self.data[idx[:, None],self.phase_space_dim], self.data[idx[:, None],self.list_dim_conditionnal],-self.n_log_g(self.data[idx,:]),-self.n_log_g(self.data[idx[:, None],self.list_dim_conditionnal]),-self.log_p[idx]
-        
-        
+            return (
+                self.data[idx[:, None], self.phase_space_dim],
+                self.data[idx[:, None], self.list_dim_conditionnal],
+                -self.n_log_g(self.data[idx, :]),
+                -self.n_log_g(self.data[idx[:, None], self.list_dim_conditionnal]),
+                -self.log_p[idx]
+            )
+
     def transform_eigen_space_to_data_space(self, x):
         """Transforms a batch of data points from the eigenspace to the data space"""
         return torch.mm(x, self.cholesky.T) + self.mean
-    
 
-    
-    def plot_histo_data(self, n_sample=100, n_bins=100, eigen=False, true_reweight=False):
-        """
-        Plots standard 1D and 2D histograms of the data (without Seaborn),
-        using a "plasma" colormap for the 2D plots.
-
-        Args:
-            n_sample (int): Number of samples to plot.
-            n_bins (int): Number of bins for histograms.
-            eigen (bool): If True, plot self.data (i.e., 'eigenspace');
-                        otherwise transform to 'data space' first.
-            gaussian_reweight (bool): If True, weight each sample by exp(-log_g).
-        """
-
-        # Decide which data to plot
-        if eigen:
-            data_plot = self.data[:n_sample, :]
-        else:
-            data_plot = self.transform_eigen_space_to_data_space(self.data[:n_sample, :])
-
-        # Optionally compute sample weights
-        if true_reweight:
-            # Assuming self.log_p is already negative log-likelihood (shape: [nsample])
-            weights = torch.exp(-self.n_log_p(gundam=False, idx=torch.arange(n_sample)))
-        else:
-            weights = None
-
-        fig, ax = plt.subplots(self.ndim, self.ndim, figsize=(3*self.ndim, 3*self.ndim))
-
-
-        if self.ndim == 1:
-            # Single 1D histogram
-            ax.hist(
-                data_plot[:, 0].numpy(),
-                bins=n_bins,
-                weights=None if weights is None else weights.numpy(),
-                color="blue",
-                alpha=0.7
-            )
-        else:
-            for i in range(self.ndim):
-                for j in range(self.ndim):
-                    if i == j:
-                        ax[i, j].hist(
-                            data_plot[:, i].numpy(),
-                            bins=n_bins,
-                            weights=None if weights is None else weights.numpy(),
-                            color="blue",
-                            alpha=0.7
-                        )
-                    else:
-                        h = ax[i, j].hist2d(
-                            x=data_plot[:, j].numpy(),
-                            y=data_plot[:, i].numpy(),
-                            bins=n_bins,
-                            weights=None if weights is None else weights.numpy(),
-                            cmap="plasma"
-                        )
-
-
-        plt.tight_layout()
-        plt.show()
-        plt.savefig('../img/histo_data.png')
-        plt.close()
     def plot_weights_histogram(self, save_path='img/hist_weights_all'):
         """
         Plots the histogram of weights for the entire dataset.
         
         The weights are defined as:
             weight[i] = exp( n_log_g(data[i]) - log_p[i] ).
-        
+
         Args:
-            n_bins (int): Number of bins for the histogram.
             save_path (str or None): If not None, saves the figure to this path.
         """
         nlogg_vals = self.n_log_g(self.data)
-        
-        diff_vals = nlogg_vals - self.log_p 
-        
-        weights = torch.exp(diff_vals)
-        bins = np.logspace(-2, 6, 100)
-        
-        # Plot the histogram
-        plt.figure(figsize=(8,6))
-        plt.hist(weights.numpy(), bins=bins, color='blue', alpha=0.7)
+        weights = nlogg_vals - self.log_p
+        plt.figure(figsize=(8, 6))
+        plt.hist(weights.numpy(), color='blue', alpha=0.7)
         plt.xlabel("Weight ")
         plt.ylabel("Frequency")
-        plt.xscale('log')
         plt.yscale('log')
         plt.title("Histogram of Weights for Entire Dataset")
-        
+
         if save_path is not None:
             plt.savefig(save_path)
         plt.close()
