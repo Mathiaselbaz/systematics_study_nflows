@@ -1,20 +1,32 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# =============================================================================
+#  Title: SystematicFlow - Normalizing Flow Class
+#  Author: Mathias El Baz
+#  Date: 28/01/2025
+#  Description:
+#     This module defines a conditional Normalizing Flow model (SystematicFlow),
+#     leveraging conditional information in the flow layers.
+#     It includes several importance-sampling-based losses:
+#     exponential loss, forward KL, reverse KL, and a symmetric KL. 
+# =============================================================================
 
 import numpy as np
 import torch
 import torch.nn as nn
 from matplotlib import pyplot as plt
+from matplotlib.colors import LogNorm
 
 from normflows.core import NormalizingFlow
 from normflows import utils, distributions
-from matplotlib.colors import LogNorm
 
 
 class SystematicFlow(NormalizingFlow):
     """
-    Conditional normalizing flow model, providing condition,
-    which is also called context, to both the base distribution
-    and the flow layers
+    Conditional normalizing flow model, providing condition (also called context)
+    to both the base distribution and the flow layers.
     """
+
     def __init__(self, base, flows, target):
         """Initializes the normalizing flow model
 
@@ -23,9 +35,8 @@ class SystematicFlow(NormalizingFlow):
           flows: List of flow layers
           target: Target distribution
         """
-        super(SystematicFlow, self).__init__(base, flows,target)
+        super(SystematicFlow, self).__init__(base, flows, target)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.bins = np.logspace(-2, 2, 100)
 
 
     def forward(self, z, context=None):
@@ -83,8 +94,7 @@ class SystematicFlow(NormalizingFlow):
           context: Batch of conditions/context
 
         Returns:
-          Batch in the latent space, log determinant of the
-          Jacobian
+          Batch in the latent space, log determinant of the Jacobian
         """
         log_det = torch.zeros(len(x), device=x.device)
         for i in range(len(self.flows) - 1, -1, -1):
@@ -116,7 +126,7 @@ class SystematicFlow(NormalizingFlow):
           context: Batch of conditions/context
 
         Returns:
-          log probability
+          Log probability
         """
         log_q = torch.zeros(len(x), dtype=x.dtype, device=x.device)
         z = x
@@ -126,147 +136,297 @@ class SystematicFlow(NormalizingFlow):
         log_q += self.q0.log_prob(z, context=context)
         return log_q
 
-    
-    def forward_kld_importance(self, idx, verbose = False, plot_hist_weight = False):
-        """Estimates forward KL divergence  with importance sampling  for a given index"""
-
+    def plot_nll_ess(self, idx, weight_cap=np.exp(150), verbose=False):
         device = self.device
         zb, context, log_g, log_g_cond, log_p = self.p.log_prob(idx=idx)
-        log_g= log_g.unsqueeze(1).to(device)
-        log_g_cond= log_g_cond.unsqueeze(1).to(device)
+        log_g = log_g.unsqueeze(1).to(device)
+        log_g_cond = log_g_cond.unsqueeze(1).to(device)
         log_p = log_p.unsqueeze(1).to(device)
         zb = zb.to(device)
         context = context.to(device)
         log_q = self.log_prob(zb, context=context).unsqueeze(1)
-        if verbose :
+        weight_cap = torch.tensor(weight_cap, device=log_q.device).expand_as(log_q)
+
+        if verbose:
             print('log_q : ', torch.mean(log_q).item())
             print('log_p : ', torch.mean(log_p).item())
             print('log_g : ', torch.mean(log_g).item())
             print('log_g_context : ', torch.mean(log_g_cond).item())
-            print('Forward kld :', torch.mean(torch.exp((log_p - log_g ))*(log_p - log_q - log_g_cond)).item())
-            print(' Mean Weights :', torch.mean(torch.exp(log_p - log_g )).item())
-        if plot_hist_weight :
-          plt.figure()
-          weights = torch.exp(log_p - log_q - log_g_cond ).detach().cpu().numpy()
-          ess = (np.sum(weights)**2) / np.sum(weights**2)
-          ess_percentage = ess / len(weights) * 100
-          plt.hist(weights, bins = self.bins)
-          plt.text(0.05, 0.95, f'ESS: {ess_percentage:.2f}%', transform=plt.gca().transAxes, fontsize=12, verticalalignment='top', horizontalalignment='left')
-          plt.title('Weights LLH/NF')
-          plt.xscale('log')
-          plt.yscale('log')
-          plt.savefig('img/Weight_nf_vs_llh')
-          plt.close()
+            print(' Mean Forward Weights :', torch.mean(torch.min(torch.exp(log_p - log_g), weight_cap)).item())
+            print(' Mean Reverse Weights :', torch.mean(torch.exp(log_q - log_g + log_g_cond)).item())
+            print('Forward Exponential loss : ', torch.mean(torch.min(torch.exp(log_p - log_g), weight_cap) * (log_p - log_q - log_g_cond) ** 2).item())
+            print('Reverse exponential loss :', torch.mean(torch.exp((log_q - log_g + log_g_cond)) *(log_q - log_p + log_g_cond)**2).item())
+            print('Forward kld : ', torch.mean(torch.min(torch.exp(log_p - log_g), weight_cap) * (log_p - log_q - log_g_cond)).item())
+            print('Reverse kld :', torch.mean(torch.exp((log_q - log_g + log_g_cond)) *(log_q - log_p + log_g_cond)).item())
 
-          plt.figure(figsize=(8, 6))
-          hist = plt.hist2d(-log_p.squeeze(1).detach().cpu().numpy(), -(log_q.squeeze(1) + log_g_cond.squeeze(1)).detach().cpu().numpy(), bins=50, norm=LogNorm(), cmap='viridis')
-          plt.xlim(10,35)
-          plt.ylim(10,35)
-          # Add colorbar
-          cbar = plt.colorbar(hist[3])
+        weights = torch.exp(log_p - log_q - log_g_cond).detach().cpu().numpy()
+        ess = (np.sum(weights)**2) / np.sum(weights**2)
+        ess_percentage = ess / len(weights) * 100
 
-          # Add ESS text
-          plt.text(
-              0.05,
-              0.95,
-              f'ESS: {ess_percentage:.2f}%',
-              transform=plt.gca().transAxes,
-              fontsize=12,
-              verticalalignment='top',
-              horizontalalignment='left',
-          )
+        plt.figure(figsize=(8, 6))
+        hist = plt.hist2d(-log_p.squeeze(1).detach().cpu().numpy(),
+                          -(log_q.squeeze(1) + log_g_cond.squeeze(1)).detach().cpu().numpy(),
+                          bins=50, norm=LogNorm(), cmap='viridis')
+        cbar = plt.colorbar(hist[3])
+        plt.text(
+            0.05, 0.95,
+            f'ESS: {ess_percentage:.2f}%',
+            transform=plt.gca().transAxes,
+            fontsize=12,
+            verticalalignment='top',
+            horizontalalignment='left',
+        )
+        plt.title('-log(p) vs -log(NF)')
+        plt.xlabel('-log(p)')
+        plt.ylabel('-log(NF)')
+        plt.savefig('img/NLLH_vs_NLNF.png')
+        plt.close()
 
-          # Set title and labels
-          plt.title('-log(p) vs -log(NF)')
-          plt.xlabel('-log(p)')
-          plt.ylabel('-log(NF)')
+        plt.figure(figsize=(8, 6))
+        hist = plt.hist2d(-log_p.squeeze(1).detach().cpu().numpy(),
+                          -log_g.squeeze(1).detach().cpu().numpy(),
+                          bins=50, norm=LogNorm(), cmap='viridis')
+        cbar = plt.colorbar(hist[3])
+        cbar.set_label('Weight Density (log scale)')
 
-          # Save and show plot
-          plt.savefig('img/NLLH_vs_NLNF.png')
-          plt.close()
+        weights = torch.exp(log_p - log_g).detach().cpu().numpy()
+        ess_2 = (np.sum(weights)**2) / np.sum(weights**2)
+        ess_percentage = ess_2 / len(weights) * 100
+        plt.text(
+            0.05, 0.95,
+            f'ESS: {ess_percentage:.2f}%',
+            transform=plt.gca().transAxes,
+            fontsize=12,
+            verticalalignment='top',
+            horizontalalignment='left',
+        )
+        plt.title('-log(p) vs -log(g)')
+        plt.xlabel('-log(p)')
+        plt.ylabel('-log(g)')
+        plt.savefig('img/NLLH_vs_NLg.png')
+        plt.close()
+        print('Ratio of ESS : ', ess/ess_2)
 
-
-          plt.figure()
-          weights = torch.exp(log_p - log_g ).detach().cpu().numpy()
-          ess = (np.sum(weights)**2) / np.sum(weights**2)
-          ess_percentage = ess / len(weights) * 100
-          plt.hist(weights, bins = self.bins)
-          plt.text(0.05, 0.95, f'ESS: {ess_percentage:.2f}%', transform=plt.gca().transAxes, fontsize=12, verticalalignment='top', horizontalalignment='left')
-          plt.title('Weights LLH/Gaussian')
-          plt.xscale('log')
-          plt.yscale('log')
-          plt.savefig('img/Weights_gaussian_vs_llh')
-          plt.close()
-
-          plt.figure(figsize=(8, 6))
-          hist = plt.hist2d(-log_p.squeeze(1).detach().cpu().numpy(), -(log_g).squeeze(1).detach().cpu().numpy(), bins=50, norm=LogNorm(), cmap='viridis')
-          plt.xlim(10,35)
-          plt.ylim(10,35)
-
-          # Add colorbar
-          cbar = plt.colorbar(hist[3])
-          cbar.set_label('Weight Density (log scale)')
-
-          # Add ESS text
-          plt.text(
-              0.05,
-              0.95,
-              f'ESS: {ess_percentage:.2f}%',
-              transform=plt.gca().transAxes,
-              fontsize=12,
-              verticalalignment='top',
-              horizontalalignment='left',
-          )
-
-          # Set title and labels
-          plt.title('-log(p) vs -log(g)')
-          plt.xlabel('-log(p)')
-          plt.ylabel('-log(g)')
-
-          # Save and show plot
-          plt.savefig('img/NLLH_vs_NLg.png')
-          plt.close()
-
-        kld = torch.mean(torch.exp((log_p - log_g ))*(log_p - log_q - log_g_cond))
-        del(log_p,log_g, log_g_cond, log_q)
-        return kld
+        return ess/ess_2
     
-    def reverse_kld_importance(self, idx, verbose = False, plot_hist_weight = False):
-        """Estimates reverse KL divergence  with importance sampling  for a given index"""
-
+    def exponential_loss_importance(self, idx, weight_cap=np.exp(150), power=1, verbose=False, plot_hist_weight=False):
         device = self.device
         zb, context, log_g, log_g_cond, log_p = self.p.log_prob(idx=idx)
-        log_g= log_g.unsqueeze(1).to(device)
-        log_g_cond= log_g_cond.unsqueeze(1).to(device)
+        log_g = log_g.unsqueeze(1).to(device)
+        log_g_cond = log_g_cond.unsqueeze(1).to(device)
         log_p = log_p.unsqueeze(1).to(device)
         zb = zb.to(device)
         context = context.to(device)
         log_q = self.log_prob(zb, context=context).unsqueeze(1)
-        
-        if verbose :
+        weight_cap = torch.tensor(weight_cap, device=log_q.device).expand_as(log_q)
+
+        if verbose:
             print('log_q : ', torch.mean(log_q).item())
             print('log_p : ', torch.mean(log_p).item())
             print('log_g : ', torch.mean(log_g).item())
             print('log_g_context : ', torch.mean(log_g_cond).item())
-            print(' Mean Weights :', torch.mean(torch.exp(log_q - log_g +log_g_cond)).item())
-            print('Reverse kld :', torch.mean(torch.exp((log_q - log_g +log_g_cond))*(log_q - log_p + log_g_cond)).item())
-        if plot_hist_weight :
-          weights = (torch.exp(log_q - log_g +log_g_cond)).detach().cpu().numpy()
-          plt.figure()
-          plt.hist(weights, bins = self.bins)
-          ess = (np.sum(weights)**2) / np.sum(weights**2)
-          ess_percentage = ess / len(weights) * 100
-          plt.text(0.05, 0.95, f'ESS: {ess_percentage:.2f}%', transform=plt.gca().transAxes, fontsize=12, verticalalignment='top', horizontalalignment='left')
-          plt.title('Weights NF/gaussian')
-          plt.xscale('log')
-          plt.yscale('log')
-          plt.savefig('img/Weight_nf_vs_gaussian')   
-        kld = torch.mean(torch.exp((log_q - log_g +log_g_cond))*(log_q - log_p + log_g_cond))
-        del(log_p,log_g, log_g_cond, log_q)
-        return kld
+            print(' Mean Weights :', torch.mean(torch.min(torch.exp(log_p - log_g), weight_cap)).item())
+            print('Exponential loss : ', torch.mean(torch.min(torch.exp(log_p - log_g), weight_cap) * (log_p - log_q - log_g_cond) ** 2).item())
+
+        if plot_hist_weight:
+            weights = torch.exp(log_p - log_q - log_g_cond).detach().cpu().numpy()
+            ess = (np.sum(weights)**2) / np.sum(weights**2)
+            ess_percentage = ess / len(weights) * 100
+
+            plt.figure(figsize=(8, 6))
+            hist = plt.hist2d(-log_p.squeeze(1).detach().cpu().numpy(),
+                              -(log_q.squeeze(1) + log_g_cond.squeeze(1)).detach().cpu().numpy(),
+                              bins=50, norm=LogNorm(), cmap='viridis')
+            cbar = plt.colorbar(hist[3])
+            plt.text(
+                0.05, 0.95,
+                f'ESS: {ess_percentage:.2f}%',
+                transform=plt.gca().transAxes,
+                fontsize=12,
+                verticalalignment='top',
+                horizontalalignment='left',
+            )
+            plt.title('-log(p) vs -log(NF)')
+            plt.xlabel('-log(p)')
+            plt.ylabel('-log(NF)')
+            plt.savefig('img/NLLH_vs_NLNF.png')
+            plt.close()
+
+            plt.figure(figsize=(8, 6))
+            hist = plt.hist2d(-log_p.squeeze(1).detach().cpu().numpy(),
+                              -log_g.squeeze(1).detach().cpu().numpy(),
+                              bins=50, norm=LogNorm(), cmap='viridis')
+            cbar = plt.colorbar(hist[3])
+            cbar.set_label('Weight Density (log scale)')
+
+            weights = torch.exp(log_p - log_g).detach().cpu().numpy()
+            ess_2 = (np.sum(weights)**2) / np.sum(weights**2)
+            ess_percentage = ess_2 / len(weights) * 100
+            plt.text(
+                0.05, 0.95,
+                f'ESS: {ess_percentage:.2f}%',
+                transform=plt.gca().transAxes,
+                fontsize=12,
+                verticalalignment='top',
+                horizontalalignment='left',
+            )
+            plt.title('-log(p) vs -log(g)')
+            plt.xlabel('-log(p)')
+            plt.ylabel('-log(g)')
+            plt.savefig('img/NLLH_vs_NLg.png')
+            plt.close()
+            print('Ratio of ESS : ', ess_2/ess)
+
+        exp_loss = torch.pow(torch.mean(
+            torch.min(torch.exp(log_p - log_g), weight_cap) *
+            (log_p - log_q - log_g_cond)**2
+        ), power)
+        del(log_p, log_g, log_g_cond, log_q)
+
+        return exp_loss
     
-    def symmetric_kld_importance(self, idx, alpha=1, beta=1, verbose=False, plot_hist_weight = False):
-        """Estimates symmetric KL divergence  with importance sampling  for a given index using the two functions above"""
+    def reverse_exponential_loss_importance (self, idx, verbose=False):
+        """Estimates reverse exp loss with importance sampling for a given index."""
+
+        device = self.device
+        zb, context, log_g, log_g_cond, log_p = self.p.log_prob(idx=idx)
+        log_g = log_g.unsqueeze(1).to(device)
+        log_g_cond = log_g_cond.unsqueeze(1).to(device)
+        log_p = log_p.unsqueeze(1).to(device)
+        zb = zb.to(device)
+        context = context.to(device)
+        log_q = self.log_prob(zb, context=context).unsqueeze(1)
+
+        if verbose:
+            print(' Mean Weights :', torch.mean(torch.exp(log_q - log_g + log_g_cond)).item())
+            print('Reverse exponential loss :', torch.mean(torch.exp((log_q - log_g + log_g_cond)) *(log_q - log_p + log_g_cond)**2).item())
+
+        exp_loss = torch.mean(torch.exp((log_q - log_g + log_g_cond)) *(log_q - log_p + log_g_cond)**2)
+        del(log_p, log_g, log_g_cond, log_q)
+        return exp_loss
+    
+    def symmetric_exponential_loss (self, idx, weight_cap=np.exp(150), power=1, alpha=1, beta=1, verbose=False, plot_hist_weight=False):
+        return (
+              alpha * self.reverse_exponential_loss_importance(idx, verbose=verbose) +
+              beta * self.exponential_loss_importance(idx,weight_cap=weight_cap, power=power, verbose=verbose, plot_hist_weight=plot_hist_weight)
+          )
+    
+
+    
         
-        return alpha*self.reverse_kld_importance(idx, verbose, plot_hist_weight=plot_hist_weight) + beta*self.forward_kld_importance(idx, verbose, plot_hist_weight = plot_hist_weight)
+    
+    
+
+    def forward_kld_importance(self, idx, weight_cap=np.exp(20), power=50/711, verbose=False, plot_hist_weight=False):
+        """Estimates forward KL divergence with importance sampling for a given index."""
+
+        device = self.device
+        zb, context, log_g, log_g_cond, log_p = self.p.log_prob(idx=idx)
+        log_g = log_g.unsqueeze(1).to(device)
+        log_g_cond = log_g_cond.unsqueeze(1).to(device)
+        log_p = log_p.unsqueeze(1).to(device)
+        zb = zb.to(device)
+        context = context.to(device)
+        log_q = self.log_prob(zb, context=context).unsqueeze(1)
+        weight_cap = torch.tensor(weight_cap, device=log_q.device).expand_as(log_q)
+
+        if verbose:
+            print('log_q : ', torch.mean(log_q).item())
+            print('log_p : ', torch.mean(log_p).item())
+            print('log_g : ', torch.mean(log_g).item())
+            print('log_g_context : ', torch.mean(log_g_cond).item())
+            print('Forward kld :', torch.pow(torch.mean(
+                torch.min(torch.exp(log_p - log_g), weight_cap) * (log_p - log_q - log_g_cond)),power).item())
+            print(' Mean Weights :', torch.pow(torch.mean(torch.min(torch.exp(log_p - log_g), weight_cap)),power).item())
+
+        if plot_hist_weight:
+            weights = torch.exp(log_p - log_q - log_g_cond).detach().cpu().numpy()
+            ess = (np.sum(weights)**2) / np.sum(weights**2)
+            ess_percentage = ess / len(weights) * 100
+
+            plt.figure(figsize=(8, 6))
+            hist = plt.hist2d(-log_p.squeeze(1).detach().cpu().numpy(),
+                              -(log_q.squeeze(1) + log_g_cond.squeeze(1)).detach().cpu().numpy(),
+                              bins=50, norm=LogNorm(), cmap='viridis')
+            cbar = plt.colorbar(hist[3])
+            plt.text(
+                0.05, 0.95,
+                f'ESS: {ess_percentage:.2f}%',
+                transform=plt.gca().transAxes,
+                fontsize=12,
+                verticalalignment='top',
+                horizontalalignment='left',
+            )
+            plt.title('-log(p) vs -log(NF)')
+            plt.xlabel('-log(p)')
+            plt.ylabel('-log(NF)')
+            plt.savefig('img/NLLH_vs_NLNF.png')
+            plt.close()
+
+            plt.figure(figsize=(8, 6))
+            hist = plt.hist2d(-log_p.squeeze(1).detach().cpu().numpy(),
+                              -log_g.squeeze(1).detach().cpu().numpy(),
+                              bins=50, norm=LogNorm(), cmap='viridis')
+            cbar = plt.colorbar(hist[3])
+            cbar.set_label('Weight Density (log scale)')
+
+            weights = torch.exp(log_p - log_g).detach().cpu().numpy()
+            ess_2 = (np.sum(weights)**2) / np.sum(weights**2)
+            ess_percentage = ess_2 / len(weights) * 100
+            plt.text(
+                0.05, 0.95,
+                f'ESS: {ess_percentage:.2f}%',
+                transform=plt.gca().transAxes,
+                fontsize=12,
+                verticalalignment='top',
+                horizontalalignment='left',
+            )
+            plt.title('-log(p) vs -log(g)')
+            plt.xlabel('-log(p)')
+            plt.ylabel('-log(g)')
+            plt.savefig('img/NLLH_vs_NLg.png')
+            plt.close()
+            print('Ratio of ESS : ', ess/ess_2)
+            kld = torch.pow(torch.mean(torch.min(torch.exp((log_p - log_g)), weight_cap) * (log_p - log_q - log_g_cond)),power)
+            return kld, ess/ess_2
+
+        kld = torch.pow(torch.mean(torch.min(torch.exp((log_p - log_g)), weight_cap) * (log_p - log_q - log_g_cond)),power)
+        del(log_p, log_g, log_g_cond, log_q)
+        return kld
+
+    def reverse_kld_importance(self, idx, verbose=False):
+        """Estimates reverse KL divergence with importance sampling for a given index."""
+
+        device = self.device
+        zb, context, log_g, log_g_cond, log_p = self.p.log_prob(idx=idx)
+        log_g = log_g.unsqueeze(1).to(device)
+        log_g_cond = log_g_cond.unsqueeze(1).to(device)
+        log_p = log_p.unsqueeze(1).to(device)
+        zb = zb.to(device)
+        context = context.to(device)
+        log_q = self.log_prob(zb, context=context).unsqueeze(1)
+
+        if verbose:
+            print(' Mean Weights :', torch.mean(torch.exp(log_q - log_g + log_g_cond)).item())
+            print('Reverse kld :', torch.mean(torch.exp((log_q - log_g + log_g_cond)) *(log_q - log_p + log_g_cond)).item())
+
+        kld = torch.mean(torch.exp((log_q - log_g + log_g_cond)) *(log_q - log_p + log_g_cond))
+        del(log_p, log_g, log_g_cond, log_q)
+        return kld
+
+    def symmetric_kld_importance(self, idx, weight_cap=np.exp(150), power=1, alpha=1, beta=1, verbose=False, plot_hist_weight=False):
+        """Estimates symmetric KL divergence with importance sampling for a given index."""
+        if plot_hist_weight :
+          forward_kld, ratio_ess = self.forward_kld_importance(idx, weight_cap=weight_cap, power=power, verbose=verbose, plot_hist_weight=plot_hist_weight)
+          return (
+              alpha * self.reverse_kld_importance(idx, verbose=verbose) +
+              beta * forward_kld
+          ), ratio_ess
+        else :
+            return (
+              alpha * self.reverse_kld_importance(idx, verbose=verbose) +
+              beta * self.forward_kld_importance(idx,weight_cap=weight_cap, power=power, verbose=verbose, plot_hist_weight=plot_hist_weight)
+          )
+            
+
    

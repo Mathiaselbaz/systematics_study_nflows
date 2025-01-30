@@ -2,3 +2,5 @@ Dataset
 output
 output/model.pth
 utils/__pycache__
+output/trained_model
+img
