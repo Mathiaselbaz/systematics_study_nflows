@@ -14,10 +14,10 @@ OUTPUT_DIR=$INPUT_DIR
 BATCH_SIZE=20
 
 # Create the output directory if it doesn't exist
-mkdir -p "$OUTPUT_DIR"
+mkdir -p "${OUTPUT_DIR}"
 
 # Get a list of all ROOT files in the input directory
-ROOT_FILES=("$INPUT_DIR"/*.root)
+ROOT_FILES=("${INPUT_DIR}"/*.root)
 
 # Total number of ROOT files
 TOTAL_FILES=${#ROOT_FILES[@]}
@@ -26,7 +26,7 @@ TOTAL_FILES=${#ROOT_FILES[@]}
 BATCH_NUMBER=1
 
 # Loop through the ROOT files in batches of BATCH_SIZE
-for ((i=0; i<$TOTAL_FILES; i+=$BATCH_SIZE)); do
+for ((i=0; i<${TOTAL_FILES}; i+=${BATCH_SIZE})); do
     # Files for the current batch
     BATCH_FILES=("${ROOT_FILES[@]:$i:$BATCH_SIZE}")
 

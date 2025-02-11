@@ -1,6 +1,6 @@
 #include "ProgressBar.h"
 
-void weights_root_file(string filename = "../Dataset/ROOT/allParams/configMarginalise_Fit_configOa2021_With_localMC_Asimov19_nToys_100000_Seed_1737454925154117948.root"){
+void weights_root_file(string filename = "../Dataset/ROOT/allParams/test200k.root"){
 
     // Open TFile
     TFile *f = new TFile(filename.c_str());
