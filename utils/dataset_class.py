@@ -20,51 +20,46 @@ import os
 import glob
 
 
+
 class SystematicDataset(torch.nn.Module):
     def __init__(
         self, 
-        data_dir,           # Directory containing batch_i.pkl files
+        data_dir,           # Directory containing batch_i.npz files
         phase_space_dim, 
-        batch_index=None    # If None, load all batches; otherwise load only batch_{batch_index}.pkl
+        batch_index=None    # If None, load all batches; otherwise load only batch_{batch_index}.npz
     ):
         """
-        Loads the dataset from one or more pickle (.pkl) files.
+        Loads the dataset from one or more pickle (.npz) files.
 
         Args:
-            data_dir (str): Path to the directory containing batch_*.pkl files.
+            data_dir (str): Path to the directory containing batch_*.npz files.
             phase_space_dim (list[int]): Indices of the phase space dimensions. 
                                          The remaining dimensions are treated as conditional variables.
-            batch_index (int or None): If an integer, load only batch_{batch_index}.pkl.
-                                       If None, load and concatenate all files matching batch_*.pkl.
+            batch_index (int or None): If an integer, load only batch_{batch_index}.npz.
+                                       If None, load and concatenate all files matching batch_*.npz.
         """
         super(SystematicDataset, self).__init__()
 
         # 1. Determine which files to load
         if batch_index is None:
-            file_list = sorted(glob.glob(os.path.join(data_dir, "batch*.pkl")))
+            file_list = sorted(glob.glob(os.path.join(data_dir, "batch*.npz")))
             if len(file_list) == 0:
                 raise FileNotFoundError(
-                    f"No files found in {data_dir} matching 'batch*.pkl'"
+                    f"No files found in {data_dir} matching 'batch*.npz'"
                 )
         else:
-            single_file = os.path.join(data_dir, f"batch{batch_index}.pkl")
+            single_file = os.path.join(data_dir, f"batch{batch_index}.npz")
             if not os.path.isfile(single_file):
                 raise FileNotFoundError(f"File {single_file} does not exist.")
             file_list = [single_file]
 
-        # 2. Load the first file once and extract shared metadata
         first_file = file_list[0]
-        first_data = np.load(first_file, allow_pickle=True)
+        first_data = np.load(first_file)
         
-        # a) Common metadata
         self.mean = torch.tensor(first_data['mean'], dtype=torch.float32)
         
         self.titles = first_data['par_names']
         
-        # b) We'll assume the same covariance for all files
-        
-
-        # 3. Prepare lists for final concatenation
         data_list = []
         log_p_list = []
 
@@ -77,7 +72,6 @@ class SystematicDataset(torch.nn.Module):
         
         log_p_first = torch.tensor(first_data['log_p'], dtype=torch.float32)
         
-        # Compute per-file log_g and shift
         log_g_first = self.n_log_g(data_first)
         shift_first = torch.median(log_g_first) - torch.median(log_p_first)
         log_p_first += shift_first
@@ -85,18 +79,11 @@ class SystematicDataset(torch.nn.Module):
         data_list.append(data_first)
         log_p_list.append(log_p_first)
 
-        # 4. Process remaining files
         for fpath in file_list[1:]:
-            loaded_data = np.load(fpath, allow_pickle=True)
-            
-            # Compute norm for this file
+            loaded_data = np.load(fpath)
             norm_file = np.median(np.std(loaded_data['data'], axis=0))
-            
-            # Normalize data
             data_file = torch.tensor(loaded_data['data'], dtype=torch.float32) / norm_file
             log_p_file = torch.tensor(loaded_data['log_p'], dtype=torch.float32)
-            
-            # Compute log_g for the current file & apply shift
             log_g_file = self.n_log_g(data_file)
             shift_file = torch.median(log_g_file) - torch.median(log_p_file)
             log_p_file += shift_file
@@ -104,11 +91,9 @@ class SystematicDataset(torch.nn.Module):
             data_list.append(data_file)
             log_p_list.append(log_p_file)
 
-        # 5. Concatenate
         self.data = torch.cat(data_list, dim=0)
         self.log_p = torch.cat(log_p_list, dim=0)
 
-        # 6. Final bookkeeping
         self.nsample, self.ndim = self.data.shape
         self.phase_space_dim = phase_space_dim
         self.list_dim_conditionnal = [i for i in range(self.ndim) if i not in phase_space_dim]

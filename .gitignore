@@ -4,3 +4,6 @@ output/model.pth
 utils/__pycache__
 output/trained_model
 img
+ml_image.simg
+logs_slurm
+root_file_analysis

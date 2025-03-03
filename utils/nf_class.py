@@ -207,7 +207,7 @@ class SystematicFlow(NormalizingFlow):
         plt.close()
         print('Ratio of ESS : ', ess/ess_2)
 
-        return ess/ess_2
+        return ess/ess_2, ess
     
     def exponential_loss_importance(self, idx, weight_cap=np.exp(150), power=1, verbose=False, plot_hist_weight=False):
         device = self.device
