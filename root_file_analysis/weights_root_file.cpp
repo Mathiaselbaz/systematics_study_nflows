@@ -1,12 +1,40 @@
+#include <TApplication.h>
+#include <TSystem.h>
+#include <TFile.h>
+#include <TTree.h>
+#include <TCanvas.h>
+#include <TH1D.h>
+#include <TH2D.h>
+#include <TMatrixD.h>
+#include <TVectorD.h>
+#include <TLegend.h>
+
 #include "ProgressBar.h"
 
-void weights_root_file(string filename = "../Dataset/ROOT/allParams/configMarginalise_Fit_configOa2021_With_localMC_Asimov19_nToys_100000_Seed_1737454925154117948.root"){
+using namespace std;
+
+int weights_root_file(string filename){
+
+    cout<<"Opening file: "<<filename<<endl;
 
     // Open TFile
     TFile *f = new TFile(filename.c_str());
+    if(not f){
+      cerr<<"ERROR: file not found"<<endl;
+      return 1;
+    }
+    if(f->IsZombie()){
+      cerr<<"ERROR: file not found"<<endl;
+      return 1;
+    }
     // Open TTree
     TTree *t = (TTree*)f->Get("margThrow");
-    
+    if(not t){
+      cerr<<"ERROR: TTree not found"<<endl;
+      return 1;
+    }
+
+
     // Get number of toys
     int Toys = t->GetEntries();
 
@@ -98,17 +126,23 @@ void weights_root_file(string filename = "../Dataset/ROOT/allParams/configMargin
     Loverg_histo->SetTitle("Distribution of weights;L/g;counts");
     gPad->SetLogy();
     gPad->SetLogx();
+    c2->SaveAs("weightsOutput/weights_distribution.pdf");
+    c2->SaveAs("weightsOutput/weights_distribution.root");
 
     // draw log(L) vs. log(g)
     TCanvas* c5 = new TCanvas("c5","c5",1600,1000);
     c5->cd();
     logL_vs_logg->Draw("colz");
+    c5->SaveAs("weightsOutput/logL_vs_logg.pdf");
+    c5->SaveAs("weightsOutput/logL_vs_logg.root");
 
     // draw L-g and print out its variance on the legend
     TCanvas* c4 = new TCanvas("c4","c4",1600,1000);
     c4->cd();
     Lminusg_histo->Draw("hist");
     Lminusg_histo->SetTitle("log(L)-log(g);log(L)-log(g);counts");
+    c4->SaveAs("weightsOutput/Lminusg_distribution.pdf");
+    c4->SaveAs("weightsOutput/Lminusg_distribution.root");
     
 
     //draw NLL and gNLL
@@ -125,6 +159,8 @@ void weights_root_file(string filename = "../Dataset/ROOT/allParams/configMargin
     leg3->AddEntry(gNLL_histo,"-log(g) (gaussian approx.)","l");
     NLL_histo->SetTitle("-log(LH) and -log(g) ;; counts");
     leg3->Draw("same");
+    c1->SaveAs("weightsOutput/NLL_gNLL_distribution.pdf");
+    c1->SaveAs("weightsOutput/NLL_gNLL_distribution.root");
 
     // draw the marg vs profiled res
 
@@ -136,5 +172,19 @@ void weights_root_file(string filename = "../Dataset/ROOT/allParams/configMargin
     cout<<"|Effective sample size: "<<ess<<endl;
     cout<<"L---------------------------------------\n";
 
+    return 0;
+}
 
+
+int main(int argc, char** argv){
+  // Create TApplication
+  TApplication app("weights", &argc, argv);
+
+  cout<<"argc: "<<argc<<endl;
+  if(argc==2){
+    weights_root_file(argv[1]);
+  }else{
+    std::cout<<"Usage: ./weightsApp <filename>"<<std::endl;
+  }
+  return 0;
 }
