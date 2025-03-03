@@ -178,7 +178,7 @@ int weights_root_file(string filename){
 
 int main(int argc, char** argv){
   // Create TApplication
-  TApplication app("weights", &argc, argv);
+  //TApplication app("weights", &argc, argv);
 
   cout<<"argc: "<<argc<<endl;
   if(argc==2){
