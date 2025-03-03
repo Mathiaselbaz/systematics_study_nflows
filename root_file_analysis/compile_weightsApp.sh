@@ -1,0 +1,1 @@
+g++ weights_root_file.cpp `root-config --cflags --libs` -o weightsApp

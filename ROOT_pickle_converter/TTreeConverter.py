@@ -4,6 +4,8 @@ import ROOT
 import matplotlib.pyplot as plt
 import sys
 
+import os
+os.system('pip install uproot')
 import uproot
 import pickle
 import numpy as np
@@ -27,7 +29,7 @@ print("---> TTree branches:")
 print(tree.keys())
 # Check how many times "gundam/version_TNamed" appears in the keys
 print("---> Number of times 'gundam/version_TNamed' appears in the keys: ",end='')
-scaling_factor_covariance = sum("gundam/version_TNamed" in key for key in input_file.keys())
+scaling_factor_covariance = sum("gundam/build/root/version_TNamed" in key for key in input_file.keys())
 print(scaling_factor_covariance)
 print("This will be applied as a scaling factor to the covariance matrix")
 
