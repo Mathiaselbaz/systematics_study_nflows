@@ -58,6 +58,9 @@ int weights_root_file(string filename){
     t->GetEntry(0);
     // Get number of params
     int Nparams = params->size();
+    std::cout<<"Number of parameters: "<<Nparams<<std::endl;
+    
+    
 
     // bins for showing the marginalised variable
     int bins = 200; //200
@@ -72,6 +75,8 @@ int weights_root_file(string filename){
     TH2D* Lminusg_vs_logg = new TH2D("Lminusg_vs_logg", "log(g) vs. log(L)-log(g);log(L)-log(g);log(g)", 1000, -30, 30, Nparams, 0, 2*Nparams);
     // 2D log(L) vs. log(g)
     TH2D* logL_vs_logg = new TH2D("logL_vs_logg", "-log(g) vs. -log(L);-log(L);-log(g)", Nparams*4, 0, 4*Nparams, 4*Nparams, 0, 4*Nparams);
+    
+    TH2D
 
 
     ProgressBar progressBar(Toys);
@@ -121,13 +126,19 @@ int weights_root_file(string filename){
     TCanvas* c2 = new TCanvas("c2","c2",1600,1000);
     c2->cd();
     Loverg_histo->Draw("hist");
-    //Lminusg_vs_logg->Draw("colz");
     cout<<"\nVariance of weights: "<<variance_weights<<endl;
     Loverg_histo->SetTitle("Distribution of weights;L/g;counts");
     gPad->SetLogy();
     gPad->SetLogx();
     c2->SaveAs("weightsOutput/weights_distribution.pdf");
     c2->SaveAs("weightsOutput/weights_distribution.root");
+
+    TCanvas* c3 = new TCanvas("c3","c3",1600,1000);
+    c3->cd();
+    Lminusg_vs_logg->Draw("colz");
+    c3->SaveAs("weightsOutput/Lminusg_vs_logg.pdf");
+    c3->SaveAs("weightsOutput/Lminusg_vs_logg.root");
+
 
     // draw log(L) vs. log(g)
     TCanvas* c5 = new TCanvas("c5","c5",1600,1000);
