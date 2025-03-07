@@ -17,6 +17,15 @@ if (len(sys.argv) != 3):
     print("Usage: python TTreeConverter.py <input_file> <output_file>")
     sys.exit(1)
 
+trans = 2
+# There are three types of "transformation" to be applied on the beta samples.
+# trans = 0: we apply the inversee cholesky decomposition, so that we transform the beta vector into the eigenspace
+# trans = 1: ("r1") we just scale each parameter accoding to its sigma. We do not mix the beta parameters between them.
+# trans = 2: ("r2") this is an inversse cholesky decomposition but we set to 0 the correlations betwen gaussian and non gaussian parameters: 
+#            BE CAREFUL, the indeces of gaussian and non gaussian parameters is set manually. 
+
+
+
 # open the ROOT file
 input_file_name = sys.argv[1]
 # example: "Datasets/12params/configMarginalise_Fit_configOa2021_With_localMC_toy_9Pars_Asimov_nToys_10000.root"
@@ -96,16 +105,34 @@ filtered_parameters = np.array(filtered_parameters)
 print(filtered_parameters)
 print(type(filtered_parameters))
 
-# convert back to the eigen space using inverse cholesky decomposition: x = L^-1 * (y - mu)
-shifted_parameters = filtered_parameters - means_vector
-cholesky = np.linalg.cholesky(covariance_matrix)
-inv_cholesky = np.linalg.inv(cholesky)
-#check if shifted_parameters has infinite values
-print("---> Are there infinite values in the shifted parameters? ", end='')
-print(np.any(np.isinf(shifted_parameters)))
+if(trans==0):
+    # convert back to the eigen space using inverse cholesky decomposition: x = L^-1 * (y - mu)
+    shifted_parameters = filtered_parameters - means_vector
+    cholesky = np.linalg.cholesky(covariance_matrix)
+    inv_cholesky = np.linalg.inv(cholesky)
+    #check if shifted_parameters has infinite values
+    print("---> Are there infinite values in the shifted parameters? ", end='')
+    print(np.any(np.isinf(shifted_parameters)))
+    # print(f"LogDeterminant: {np.log(np.linalg.det(cholesky))/12}")
+    eigen_space = np.array([inv_cholesky @ vector for vector in shifted_parameters])
+elif(trans==1):
+    shifted_parameters = filtered_parameters - means_vector
+    sigma_vector = np.diag(covariance_matrix)
+    eigen_space = np.array([ vector/sigma_vector for vector in shifted_parameters])
+elif(trans==2):
+    shifted_parameters = filtered_parameters - means_vector
+    # set to zero the elements of the covariance matrix that mix gaussian and non-gaussian
+    gaussian_dimensions = 671
+    mask = ((i >= gaussian_dimensions) & (j < gaussian_dimensions)) | ((i < gaussian_dimensions) & (j >= gaussian_dimensions))
+    # Set the selected elements to zero
+    covariance_matrix[mask] = 0
+    cholesky = np.linalg.cholesky(covariance_matrix)
+    inv_cholesky = np.linalg.inv(cholesky)
+    #check if shifted_parameters has infinite values
+    print("---> Are there infinite values in the shifted parameters? ", end='')
+    print(np.any(np.isinf(shifted_parameters)))
+    # print(f"LogDeterminant: {np.log(np.linalg.det(cholesky))/12}")
 
-# print(f"LogDeterminant: {np.log(np.linalg.det(cholesky))/12}")
-eigen_space = np.array([inv_cholesky @ vector for vector in shifted_parameters])
 print(shifted_parameters.shape)
 print(cholesky.shape)
 for vector in shifted_parameters:
@@ -133,10 +160,15 @@ data_dict = {
     "par_names": tnamed_titles
 }
 
-# save pickle file with the dictionary
+# # save pickle file with the dictionary
+# output_file_name = sys.argv[2]
+# with open(output_file_name, "wb") as f:
+#     pickle.dump(data_dict, f)
+
+# save npz file with the dictionary
 output_file_name = sys.argv[2]
-with open(output_file_name, "wb") as f:
-    pickle.dump(data_dict, f)
+output_file_name = output_file_name + "_r" + str(trans)
+np.savez(output_file_name, **data_dict)
 
 dim_to_plot = 12
 # Create a grid of subplots
