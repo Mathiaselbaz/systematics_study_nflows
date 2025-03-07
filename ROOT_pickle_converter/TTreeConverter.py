@@ -17,7 +17,7 @@ if (len(sys.argv) != 3):
     print("Usage: python TTreeConverter.py <input_file> <output_file>")
     sys.exit(1)
 
-trans = 2
+trans = 1
 # There are three types of "transformation" to be applied on the beta samples.
 # trans = 0: we apply the inversee cholesky decomposition, so that we transform the beta vector into the eigenspace
 # trans = 1: ("r1") we just scale each parameter accoding to its sigma. We do not mix the beta parameters between them.
@@ -108,30 +108,41 @@ print(type(filtered_parameters))
 if(trans==0):
     # convert back to the eigen space using inverse cholesky decomposition: x = L^-1 * (y - mu)
     shifted_parameters = filtered_parameters - means_vector
+    transformation_matrix = covariance_matrix
     cholesky = np.linalg.cholesky(covariance_matrix)
     inv_cholesky = np.linalg.inv(cholesky)
     #check if shifted_parameters has infinite values
-    print("---> Are there infinite values in the shifted parameters? ", end='')
-    print(np.any(np.isinf(shifted_parameters)))
-    # print(f"LogDeterminant: {np.log(np.linalg.det(cholesky))/12}")
     eigen_space = np.array([inv_cholesky @ vector for vector in shifted_parameters])
+    print("---> Are there infinite values in the transformed parameters? ", end='')
+    print(np.any(np.isinf(eigen_space)))
 elif(trans==1):
     shifted_parameters = filtered_parameters - means_vector
-    sigma_vector = np.diag(covariance_matrix)
+    sigma_vector = np.sqrt(np.diag(covariance_matrix))
+    i, j = np.indices(covariance_matrix.shape)
+    mask = (i!=j)
+    transformation_matrix = covariance_matrix
+    transformation_matrix[mask] = 0
+    cholesky = np.linalg.cholesky(transformation_matrix)
+    inv_cholesky = np.linalg.inv(cholesky)
+    # just use the vector of sigmas to compute the transformed systematics vector
     eigen_space = np.array([ vector/sigma_vector for vector in shifted_parameters])
+    print("---> Are there infinite values in the transformed parameters? ", end='')
+    print(np.any(np.isinf(eigen_space)))
 elif(trans==2):
     shifted_parameters = filtered_parameters - means_vector
     # set to zero the elements of the covariance matrix that mix gaussian and non-gaussian
     gaussian_dimensions = 671
+    i, j = np.indices(covariance_matrix.shape)
     mask = ((i >= gaussian_dimensions) & (j < gaussian_dimensions)) | ((i < gaussian_dimensions) & (j >= gaussian_dimensions))
     # Set the selected elements to zero
-    covariance_matrix[mask] = 0
-    cholesky = np.linalg.cholesky(covariance_matrix)
+    transformation_matrix = covariance_matrix
+    transformation_matrix[mask] = 0
+    cholesky = np.linalg.cholesky(transformation_matrix)
     inv_cholesky = np.linalg.inv(cholesky)
     #check if shifted_parameters has infinite values
-    print("---> Are there infinite values in the shifted parameters? ", end='')
-    print(np.any(np.isinf(shifted_parameters)))
-    # print(f"LogDeterminant: {np.log(np.linalg.det(cholesky))/12}")
+    eigen_space = np.array([inv_cholesky @ vector for vector in shifted_parameters])
+    print("---> Are there infinite values in the transformed parameters? ", end='')
+    print(np.any(np.isinf(eigen_space)))
 
 print(shifted_parameters.shape)
 print(cholesky.shape)
@@ -156,6 +167,7 @@ data_dict = {
     "data": eigen_space,
     "log_p": filtered_NLL,
     "cov": covariance_matrix,
+    "trans": transformation_matrix,
     "mean": means_vector,
     "par_names": tnamed_titles
 }
